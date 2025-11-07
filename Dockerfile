@@ -16,5 +16,5 @@ COPY . .
 # Make port 5000 available to the world outside this container
 EXPOSE 5000
 
-# Run api.py when the container launches
-CMD ["python3", "-m", "ai_memory_system.api"]
+# Run the API with Gunicorn
+CMD ["gunicorn", "-c", "gunicorn_config.py", "ai_memory_system.api:app"]

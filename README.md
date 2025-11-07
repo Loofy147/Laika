@@ -9,6 +9,22 @@ This project is a proof-of-concept for a 'Memory and Identity AI Stack'. Its pur
 *   **Continuous Learning:** The AI's memory update function is continuously trained on new events.
 *   **Differential Equation-Based Memory:** The memory state evolves according to a differential equation, which allows for a more natural decay of memories over time.
 
+## Theoretical Analysis
+
+The memory update rule is a discretized version of the following ordinary differential equation:
+
+dM/dt = -λM + a * f_θ(M, I, E)
+
+where:
+- M is the memory state
+- λ is the decay rate
+- a is the activation factor
+- f_θ is the neural network that computes the memory update
+- I is the user's identity embedding
+- E is the event embedding
+
+The stability of this system can be analyzed by examining the eigenvalues of the Jacobian matrix of the system. The system is stable if all eigenvalues have negative real parts. The convergence of the learning process is ensured by the use of the AdamW optimizer and a learning rate scheduler, which adapts the learning rate based on the training loss.
+
 ## Architecture
 
 The system is composed of the following modules:
@@ -81,3 +97,15 @@ Example `POST` request to `/interact`:
     "significance": 0.8
 }
 ```
+
+## Asynchronous Event Handling
+
+In a production environment, it is recommended to handle events asynchronously. This can be achieved by using a message queue like RabbitMQ or Kafka. The API would publish events to the message queue, and a separate worker process would consume the events and update the AI's memory. This architecture would improve the scalability and reliability of the system.
+
+## Extension Points
+
+This project can be extended in several ways:
+
+*   **Attention Mechanisms:** An attention mechanism could be added to the `FTheta` network to allow the model to focus on specific parts of the input when computing the memory update.
+*   **Advanced Neural Architectures:** The `FTheta` network could be replaced with a more advanced architecture, such as a Transformer, to improve its performance.
+*   **Multi-Agent Systems:** The system could be extended to support multiple AI agents, each with its own memory and identity. This would allow for the creation of more complex and interactive AI systems.

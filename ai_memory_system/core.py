@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import logging
 from sentence_transformers import SentenceTransformer
 from SALib.sample import saltelli
 from SALib.analyze import sobol
@@ -11,7 +12,7 @@ from .memory_controller import MemoryController
 
 class MemoryAI:
     """Integrates components and orchestrates the memory update and learning process."""
-    def __init__(self, user_id, initial_identity_properties, memory_size=128, identity_embedding_size=384, event_embedding_size=384):
+    def __init__(self, user_id, initial_identity_properties, memory_size=128, identity_embedding_size=384, event_embedding_size=384, patience=5, min_delta=1e-5):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device=self.device)
 
@@ -23,9 +24,14 @@ class MemoryAI:
         self.memory_controller.f_theta.to(self.device)
 
         self.optimizer = optim.AdamW(self.memory_controller.f_theta.parameters(), lr=0.001)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.7, patience=5)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.7, patience=patience)
         self.loss_function = nn.MSELoss()
         self.max_grad_norm = 1.0
+
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best_loss = float('inf')
+        self.patience_counter = 0
 
     def _prepare_input_tensor(self, memory_state, identity_tensor, event_data):
         """Creates an event tensor and combines inputs."""
@@ -53,7 +59,7 @@ class MemoryAI:
         """Processes an interaction, detects events, and updates memory."""
         event = self.event_detector.detect(interaction_data)
         if event:
-            print(f"Event detected: {event['event_type']} - '{interaction_data['content']}' (Threshold: {self.event_detector.threshold:.2f})")
+            logging.info(f"Event detected: {event['event_type']} - '{interaction_data['content']}' (Threshold: {self.event_detector.threshold:.2f})")
             loss = self.update_memory_and_learn(event['data'])
             return loss
         return None
@@ -83,7 +89,17 @@ class MemoryAI:
         self.optimizer.step()
         self.scheduler.step(loss.item())
 
-        print(f"  Training loss: {loss.item():.6f}")
+        logging.info(f"  Training loss: {loss.item():.6f}, LR: {self.optimizer.param_groups[0]['lr']:.6f}")
+
+        if self.best_loss - loss.item() > self.min_delta:
+            self.best_loss = loss.item()
+            self.patience_counter = 0
+        else:
+            self.patience_counter += 1
+            if self.patience_counter >= self.patience:
+                logging.info("Convergence detected. Stopping training.")
+                return None
+
         return loss.item()
 
     def analyze_sensitivity(self, param_ranges, interactions):
