@@ -1,16 +1,15 @@
 import unittest
-from .core import MemoryAI
+import torch
+from ai_memory_system.core import MemoryAI
 
 class TestMemoryAI(unittest.TestCase):
-    def test_initialization(self):
-        """Tests that the MemoryAI class can be initialized without errors."""
+    def test_smoke(self):
         user_id = "test_user"
-        initial_identity_props = {"age": 25, "interests": ["testing"]}
-        try:
-            ai_agent = MemoryAI(user_id, initial_identity_props)
-            self.assertIsNotNone(ai_agent, "AI agent should not be None")
-        except Exception as e:
-            self.fail(f"MemoryAI initialization failed with an exception: {e}")
+        initial_identity_props = {"age": 25, "interests": ["coding", "reading"]}
+        ai = MemoryAI(user_id, initial_identity_props)
+        interaction = {"type": "chat", "content": "Hello, world!", "significance": 0.9}
+        loss = ai.process_interaction(interaction)
+        self.assertIsNotNone(loss)
 
 if __name__ == '__main__':
     unittest.main()

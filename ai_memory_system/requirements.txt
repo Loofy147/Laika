@@ -1,2 +1,8 @@
 torch>=2.0
 numpy
+transformers
+sentence-transformers
+SALib
+matplotlib
+Flask
+diffprivlib
