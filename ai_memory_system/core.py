@@ -19,8 +19,12 @@ class MemoryAI:
         self.identity = Identity(user_id, initial_identity_properties, self.embedding_model)
         self.event_detector = AdaptiveEventDetector(initial_threshold=0.6)
 
-        self.input_size = memory_size + identity_embedding_size + event_embedding_size
-        self.memory_controller = MemoryController(memory_size=memory_size, input_size=self.input_size, hidden_size=512)
+        self.memory_controller = MemoryController(
+            memory_size=memory_size,
+            identity_size=identity_embedding_size,
+            event_size=event_embedding_size,
+            hidden_size=512
+        )
         self.memory_controller.f_theta.to(self.device)
 
         self.optimizer = optim.AdamW(self.memory_controller.f_theta.parameters(), lr=0.001)
@@ -33,11 +37,17 @@ class MemoryAI:
         self.best_loss = float('inf')
         self.patience_counter = 0
 
-    def _prepare_input_tensor(self, memory_state, identity_tensor, event_data):
-        """Creates an event tensor and combines inputs."""
+    def _prepare_input_tensors(self, memory_state, identity_tensor, event_data):
+        """Creates an event tensor and returns a dictionary of input tensors."""
         event_content = event_data.get("content", "")
-        event_tensor = self.embedding_model.encode(event_content, convert_to_tensor=True).to(self.device).unsqueeze(0)
-        return torch.cat((memory_state.to(self.device), identity_tensor.to(self.device), event_tensor), dim=1)
+        # The sentence transformer runs in inference mode, so we clone the tensor
+        # to make it usable in a gradient-tracking context.
+        event_tensor = self.embedding_model.encode(event_content, convert_to_tensor=True).to(self.device).unsqueeze(0).clone()
+        return {
+            "memory_state": memory_state.to(self.device),
+            "identity_tensor": identity_tensor.to(self.device),
+            "event_tensor": event_tensor
+        }
 
     def _get_simulated_target_delta_m(self, event_data):
         """Creates a simulated 'ground truth' memory update for learning."""
@@ -69,19 +79,19 @@ class MemoryAI:
         memory_state = self.memory_controller.get_state()
         identity_tensor = self.identity.get_properties_tensor()
 
-        combined_input = self._prepare_input_tensor(memory_state, identity_tensor, event_data)
-        predicted_delta_m = self.memory_controller.predict_delta_m(combined_input)
+        input_tensors = self._prepare_input_tensors(memory_state, identity_tensor, event_data)
+        predicted_delta_m = self.memory_controller.predict_delta_m(**input_tensors)
 
         target_delta_m = self._get_simulated_target_delta_m(event_data)
         self.memory_controller.update(predicted_delta_m.detach(), dt=dt)
 
-        loss = self.train_f_theta(combined_input, target_delta_m)
+        loss = self.train_f_theta(input_tensors, target_delta_m)
         return loss
 
-    def train_f_theta(self, input_tensor, target_output):
+    def train_f_theta(self, input_tensors, target_output):
         """Performs a single training step for the f_theta network."""
         self.optimizer.zero_grad()
-        output = self.memory_controller.predict_delta_m(input_tensor)
+        output = self.memory_controller.predict_delta_m(**input_tensors)
         loss = self.loss_function(output, target_output)
         loss.backward()
 

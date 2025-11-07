@@ -124,6 +124,19 @@ Example `POST` request to `/interact`:
 }
 ```
 
+## Performance Evaluation
+
+To evaluate the performance of the AI system, run the `evaluate.py` script:
+
+```bash
+python3 evaluate.py
+```
+
+This script will compute the following metrics:
+
+*   **Memory Fidelity:** The mean absolute difference between the norms of the target and predicted memory updates.
+*   **Learning Stability:** The standard deviation of the training loss.
+
 ## Asynchronous Event Handling
 
 In a production environment, it is recommended to handle events asynchronously. This can be achieved by using a message queue like RabbitMQ or Kafka. The API would publish events to the message queue, and a separate worker process would consume the events and update the AI's memory. This architecture would improve the scalability and reliability of the system.
@@ -132,6 +145,5 @@ In a production environment, it is recommended to handle events asynchronously. 
 
 This project can be extended in several ways:
 
-*   **Attention Mechanisms:** An attention mechanism could be added to the `FTheta` network to allow the model to focus on specific parts of the input when computing the memory update.
-*   **Advanced Neural Architectures:** The `FTheta` network could be replaced with a more advanced architecture, such as a Transformer, to improve its performance.
+*   **Advanced Neural Architectures:** The `FTheta` network has been replaced with a Transformer-based model to capture more complex relationships between the memory state, identity, and event.
 *   **Multi-Agent Systems:** The system could be extended to support multiple AI agents, each with its own memory and identity. This would allow for the creation of more complex and interactive AI systems.
