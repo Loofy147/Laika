@@ -86,8 +86,34 @@ python3 -m ai_memory_system.api
 
 ### API Endpoints
 
+*   `POST /login`: Returns a token for a given user.
 *   `GET /memory`: Returns the current memory state.
 *   `POST /interact`: Processes a new interaction.
+*   `GET /explain`: Explains the last memory update.
+*   `POST /identity`: Updates the user's properties.
+
+### Authentication
+
+The API uses token-based authentication. To get a token, send a `POST` request to the `/login` endpoint with a JSON body containing your username:
+
+```json
+{
+    "username": "user1"
+}
+```
+
+The API will return a token, which you should include in the `Authorization` header of all subsequent requests.
+
+### Updating User Properties
+
+To update the user's properties, send a `POST` request to the `/identity` endpoint with a JSON body containing the new properties:
+
+```json
+{
+    "interests": ["python", "api_design", "machine_learning"],
+    "biography": "I am a software engineer with a passion for AI."
+}
+```
 
 Example `POST` request to `/interact`:
 ```json
