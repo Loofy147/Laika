@@ -5,6 +5,7 @@ from .tokens import VALID_TOKENS
 import numpy as np
 import os
 import torch
+import json
 
 app = Flask(__name__)
 
@@ -29,10 +30,10 @@ def require_auth(f):
 
         # Load or create agent for the user
         if user_id not in agents:
-            # A real app would load user properties from a database
             initial_identity_props = {"age": 30, "interests": ["python", "api_design"]}
             state_filepath = os.path.join(DATA_DIR, f"{user_id}.pt")
-            agents[user_id] = MemoryAI(user_id, initial_identity_props, state_filepath=state_filepath)
+            training_log_path = os.path.join(DATA_DIR, f"{user_id}_training_log.jsonl")
+            agents[user_id] = MemoryAI(user_id, initial_identity_props, state_filepath=state_filepath, training_log_path=training_log_path)
 
         ai_agent = agents[user_id]
 
@@ -67,19 +68,15 @@ def process_interaction(ai_agent):
     interaction_data = request.json
     last_interactions[user_id] = interaction_data
 
-    result = ai_agent.process_interaction(interaction_data)
+    input_tensors = ai_agent.process_interaction(interaction_data)
 
-    if result is not None:
-        loss, input_tensors = result
+    if input_tensors is not None:
         last_explanation_data[user_id] = input_tensors
-        # Save agent state after interaction
         ai_agent.save_state()
-        return jsonify({"status": "event processed", "loss": loss})
+        return jsonify({"status": "event processed, data logged for training"})
     else:
-        # Save agent state even if no event was detected (e.g. adaptive threshold update)
         ai_agent.save_state()
         return jsonify({"status": "no event detected"})
-
 
 @app.route('/identity', methods=['POST'])
 @require_auth
@@ -87,9 +84,31 @@ def update_identity(ai_agent):
     """Updates the user's properties."""
     new_properties = request.json
     ai_agent.identity.update_properties(new_properties)
-    # Also save state after identity update
     ai_agent.save_state()
     return jsonify({"status": "identity updated"})
+
+@app.route('/train', methods=['POST'])
+@require_auth
+def train_agent(ai_agent):
+    """Triggers a training cycle on logged data."""
+    if not ai_agent.training_log_path or not os.path.exists(ai_agent.training_log_path):
+        return jsonify({"message": "No training data to process."}), 404
+
+    with open(ai_agent.training_log_path, 'r') as f:
+        batch_data = [json.loads(line) for line in f]
+
+    if not batch_data:
+        return jsonify({"message": "Training log is empty."}), 200
+
+    avg_loss = ai_agent.train_on_batch(batch_data)
+
+    # Clear the log file after training
+    open(ai_agent.training_log_path, 'w').close()
+
+    # Save the updated model state
+    ai_agent.save_state()
+
+    return jsonify({"status": "training complete", "average_loss": avg_loss})
 
 @app.route('/explain', methods=['GET'])
 @require_auth
@@ -102,26 +121,21 @@ def explain_update(ai_agent):
 
     input_tensors = last_explanation_data[user_id]
 
-    # Ensure tensors require gradients
     for key, tensor in input_tensors.items():
         input_tensors[key] = tensor.clone().detach().requires_grad_(True)
 
-    # Re-run the forward pass to build the computation graph
     predicted_delta_m = ai_agent.memory_controller.predict_delta_m(**input_tensors)
 
-    # We need a scalar value to backpropagate from, so we use the norm of the output.
     scalar_output = torch.norm(predicted_delta_m)
     scalar_output.backward()
 
-    # Get the gradients
     grads = {
         "memory": torch.norm(input_tensors["memory_state"].grad).item(),
         "identity": torch.norm(input_tensors["identity_tensor"].grad).item(),
         "event": torch.norm(input_tensors["event_tensor"].grad).item()
     }
 
-    # Normalize the gradients to get feature importances
-    total_grad = sum(grads.values())
+    total_grad = sum(grads.values()) if sum(grads.values()) > 0 else 1
     importances = {name: (grad / total_grad) * 100 for name, grad in grads.items()}
 
     explanation = (

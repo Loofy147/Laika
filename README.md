@@ -91,6 +91,11 @@ python3 -m ai_memory_system.api
 *   `POST /interact`: Processes a new interaction.
 *   `GET /explain`: Explains the last memory update.
 *   `POST /identity`: Updates the user's properties.
+*   `POST /train`: Triggers a training cycle on logged data.
+
+### Asynchronous Training
+
+To improve performance and scalability, the AI model is not trained in real-time with every interaction. Instead, training data is logged, and training is performed asynchronously. To trigger a training cycle, send a `POST` request to the `/train` endpoint.
 
 ### Authentication
 
