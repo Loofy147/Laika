@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Memory System</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>AI Memory System</h1>
+        <div class="interaction-container">
+            <textarea id="interaction-input" placeholder="Enter interaction text..."></textarea>
+            <input type="range" id="significance-slider" min="0" max="1" step="0.1" value="0.5">
+            <button id="interact-button">Interact</button>
+        </div>
+        <div class="visualization-container">
+            <h2>Memory State</h2>
+            <div id="memory-visualization"></div>
+        </div>
+        <div class="explanation-container">
+            <h2>Explanation</h2>
+            <p id="explanation-text"></p>
+        </div>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+</html>

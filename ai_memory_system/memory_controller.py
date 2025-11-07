@@ -2,23 +2,23 @@ import torch
 import torch.nn as nn
 
 class FTheta(nn.Module):
-    """Neural network to compute memory updates (ΔM)."""
+    """Neural network with gating mechanisms to compute memory updates (ΔM)."""
     def __init__(self, input_size, hidden_size, output_size):
         super(FTheta, self).__init__()
-        self.network = nn.Sequential(
+        self.hidden_network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.LayerNorm(hidden_size),
             nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(hidden_size, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.Tanh(),
-            nn.Dropout(0.1),
-            nn.Linear(hidden_size, output_size)
+            nn.Dropout(0.1)
         )
+        self.input_gate_linear = nn.Linear(hidden_size, output_size)
+        self.candidate_linear = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        return self.network(x)
+        hidden = self.hidden_network(x)
+        input_gate = torch.sigmoid(self.input_gate_linear(hidden))
+        candidate = torch.tanh(self.candidate_linear(hidden))
+        return input_gate * candidate
 
 class MemoryController:
     """Manages the AI's memory and the neural network for updates."""
