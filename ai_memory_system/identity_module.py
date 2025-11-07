@@ -2,14 +2,15 @@ import torch
 import hashlib
 from sentence_transformers import SentenceTransformer
 from diffprivlib.mechanisms import Laplace
+from . import config
 
 class Identity:
     """Represents the user's identity and handles property encoding."""
-    def __init__(self, user_id, initial_properties, embedding_model, epsilon=1.0):
+    def __init__(self, user_id, initial_properties, embedding_model):
         self.user_id = user_id
         self.properties = initial_properties
         self.embedding_model = embedding_model
-        self.epsilon = epsilon
+        self.epsilon = config.EPSILON
         self.identity_embedding = self._create_embedding()
 
     def _hash_properties(self):
@@ -32,8 +33,8 @@ class Identity:
         """Returns the identity embedding."""
         return self.identity_embedding
 
-    def update_properties(self, new_properties, alpha=0.1):
+    def update_properties(self, new_properties):
         """Updates the user's properties and the identity embedding."""
         self.properties.update(new_properties)
         new_embedding = self._create_embedding()
-        self.identity_embedding = (1 - alpha) * self.identity_embedding + alpha * new_embedding
+        self.identity_embedding = (1 - config.ALPHA) * self.identity_embedding + config.ALPHA * new_embedding

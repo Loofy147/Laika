@@ -1,11 +1,12 @@
 import numpy as np
+from . import config
 
 class AdaptiveEventDetector:
     """Detects events with an adaptive threshold."""
-    def __init__(self, initial_threshold=0.5, window_size=10, adjustment_factor=0.1):
-        self.threshold = initial_threshold
-        self.window_size = window_size
-        self.adjustment_factor = adjustment_factor
+    def __init__(self):
+        self.threshold = config.EVENT_THRESHOLD
+        self.window_size = config.WINDOW_SIZE
+        self.adjustment_factor = config.ADJUSTMENT_FACTOR
         self.significance_history = []
 
     def _update_threshold(self):
@@ -20,6 +21,10 @@ class AdaptiveEventDetector:
         self.significance_history.append(significance)
         self._update_threshold()
 
+        event_type = "significant_interaction"
+        if interaction_data.get('type') == 'identity_update':
+            event_type = 'identity_update'
+
         if significance > self.threshold:
-            return {"event_type": "significant_interaction", "data": interaction_data}
+            return {"event_type": event_type, "data": interaction_data}
         return None

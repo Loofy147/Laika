@@ -9,10 +9,15 @@
 <body>
     <div class="container">
         <h1>AI Memory System</h1>
+        <div class="login-container">
+            <input type="text" id="username-input" placeholder="Enter username...">
+            <button id="login-button">Login</button>
+        </div>
         <div class="interaction-container">
             <textarea id="interaction-input" placeholder="Enter interaction text..."></textarea>
             <input type="range" id="significance-slider" min="0" max="1" step="0.1" value="0.5">
             <button id="interact-button">Interact</button>
+            <button id="train-button">Train</button>
         </div>
         <div class="visualization-container">
             <h2>Memory State</h2>

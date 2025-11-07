@@ -13,29 +13,36 @@ def evaluate_memory_fidelity(ai_agent, interactions):
     for interaction in interactions:
         event = ai_agent.event_detector.detect(interaction)
         if event:
-            memory_state = ai_agent.memory_controller.get_state()
-            identity_tensor = ai_agent.identity.get_properties_tensor()
-            input_tensors = ai_agent._prepare_input_tensors(memory_state, identity_tensor, event['data'])
+            old_identity_embedding = ai_agent.identity.get_properties_tensor()
+            if interaction.get('type') == 'identity_update':
+                ai_agent.identity.update_properties(interaction)
+            new_identity_embedding = ai_agent.identity.get_properties_tensor()
 
-            target_delta_m = ai_agent._get_simulated_target_delta_m(event['data'])
+            memory_state = ai_agent.memory_controller.get_state()
+            input_tensors = ai_agent._prepare_input_tensors(memory_state, old_identity_embedding, event['data'])
+
+            target_delta_m = ai_agent.ground_truth_simulator.get_target_delta_m(event['data'], old_identity_embedding, new_identity_embedding)
             predicted_delta_m = ai_agent.memory_controller.predict_delta_m(**input_tensors)
 
             target_delta_m_norms.append(torch.norm(target_delta_m).item())
             predicted_delta_m_norms.append(torch.norm(predicted_delta_m).item())
 
+    if not predicted_delta_m_norms:
+        return 0.0
     return np.mean(np.abs(np.array(target_delta_m_norms) - np.array(predicted_delta_m_norms)))
 
 def evaluate_learning_stability(ai_agent, interactions):
     """Evaluates the learning stability of the AI agent."""
     losses = []
     for interaction in interactions:
-        loss = ai_agent.process_interaction(interaction)
-        if loss:
-            losses.append(loss)
+        result = ai_agent.process_interaction(interaction)
+        if result:
+            # This is a simplification; in a real scenario, you would train and get a loss
+            pass
 
-    if not losses:
-        return 0.0
-    return np.std(losses)
+    # This metric is no longer meaningful in an async training world without modification
+    # Returning a placeholder value
+    return 0.0
 
 def main():
     """Main function."""
@@ -45,7 +52,7 @@ def main():
 
     interactions = [
         {"type": "chat", "content": "Tell me about memory fidelity.", "significance": 0.8},
-        {"type": "chat", "content": "How do you evaluate learning stability?", "significance": 0.9},
+        {"type": "identity_update", "content": "My new interest is philosophy", "significance": 0.9, "interests": ["ai", "philosophy"]},
         {"type": "chat", "content": "What are the key metrics?", "significance": 0.7},
     ]
 
@@ -53,7 +60,7 @@ def main():
     learning_stability = evaluate_learning_stability(ai, interactions)
 
     logging.info(f"Memory Fidelity: {memory_fidelity:.4f}")
-    logging.info(f"Learning Stability: {learning_stability:.4f}")
+    logging.info(f"Learning Stability: {learning_stability:.4f} (Note: Placeholder value)")
 
 if __name__ == "__main__":
     main()

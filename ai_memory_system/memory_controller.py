@@ -2,10 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import os
+from . import config
 
 class TransformerFTheta(nn.Module):
     """Transformer-based network to compute memory updates (ΔM)."""
-    def __init__(self, memory_size, identity_size, event_size, hidden_size, output_size, nhead=4, num_layers=2):
+    def __init__(self, memory_size, identity_size, event_size, hidden_size, output_size, nhead, num_layers):
         super(TransformerFTheta, self).__init__()
         # Projection layers to create a common embedding space
         self.mem_proj = nn.Linear(memory_size, hidden_size)
@@ -42,17 +43,19 @@ class TransformerFTheta(nn.Module):
 
 class MemoryController:
     """Manages the AI's memory and the neural network for updates."""
-    def __init__(self, memory_size, identity_size, event_size, hidden_size=256, lambda_decay=0.01, activation_factor=1.0):
+    def __init__(self, memory_size, identity_size, event_size):
         self.state = torch.zeros(1, memory_size)
         self.f_theta = TransformerFTheta(
             memory_size=memory_size,
             identity_size=identity_size,
             event_size=event_size,
-            hidden_size=hidden_size,
-            output_size=memory_size
+            hidden_size=config.HIDDEN_SIZE,
+            output_size=memory_size,
+            nhead=config.NHEAD,
+            num_layers=config.NUM_LAYERS
         )
-        self.lambda_decay = lambda_decay
-        self.activation_factor = activation_factor
+        self.lambda_decay = config.LAMBDA_DECAY
+        self.activation_factor = config.ACTIVATION_FACTOR
 
     def update(self, delta_m, dt=1.0):
         """Discretized memory update equation."""

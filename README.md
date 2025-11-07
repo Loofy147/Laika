@@ -97,9 +97,20 @@ python3 -m ai_memory_system.api
 
 To improve performance and scalability, the AI model is not trained in real-time with every interaction. Instead, training data is logged, and training is performed asynchronously. To trigger a training cycle, send a `POST` request to the `/train` endpoint.
 
+### Configuration
+
+All hyperparameters for the system are stored in the `ai_memory_system/config.py` file. You can modify this file to tune the performance of the AI.
+
 ### Authentication
 
-The API uses token-based authentication. To get a token, send a `POST` request to the `/login` endpoint with a JSON body containing your username:
+The API uses token-based authentication. The valid tokens are loaded from the `VALID_API_TOKENS` environment variable. The format for this variable is a comma-separated list of `token:username` pairs.
+
+Example:
+```bash
+export VALID_API_TOKENS="my-secret-token:user1,another-secret-token:user2"
+```
+
+To get a token, send a `POST` request to the `/login` endpoint with a JSON body containing your username:
 
 ```json
 {

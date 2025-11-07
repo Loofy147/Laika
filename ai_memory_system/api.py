@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from functools import wraps
 from .core import MemoryAI
-from .tokens import VALID_TOKENS
 import numpy as np
 import os
 import torch
@@ -11,8 +10,21 @@ app = Flask(__name__)
 
 # Directory to store agent state
 DATA_DIR = "agent_data"
+ARCHIVE_DIR = os.path.join(DATA_DIR, "archive")
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
+if not os.path.exists(ARCHIVE_DIR):
+    os.makedirs(ARCHIVE_DIR)
+
+# Load valid tokens from environment variable
+VALID_TOKENS = {}
+def load_tokens_from_env():
+    global VALID_TOKENS
+    VALID_TOKENS_str = os.environ.get('VALID_API_TOKENS', '')
+    VALID_TOKENS = dict(token.split(':') for token in VALID_TOKENS_str.split(',') if ':' in token)
+
+load_tokens_from_env()
+
 
 # Dictionary to hold agent instances, keyed by user_id
 agents = {}
@@ -22,7 +34,17 @@ last_explanation_data = {}
 def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return jsonify({"message": "Authorization header missing"}), 401
+
+        try:
+            token_type, token = auth_header.split()
+            if token_type.lower() != 'bearer':
+                return jsonify({"message": "Invalid token type"}), 401
+        except ValueError:
+            return jsonify({"message": "Invalid Authorization header format"}), 401
+
         if not token or token not in VALID_TOKENS:
             return jsonify({"message": "Authentication required"}), 401
 
@@ -47,6 +69,8 @@ def send_static(path):
 @app.route('/login', methods=['POST'])
 def login():
     """Returns a token for a given user."""
+    # This is a simplified example for demonstration.
+    # In a real application, you would use a proper authentication provider.
     username = request.json.get('username')
     for token, user in VALID_TOKENS.items():
         if user == username:
@@ -64,7 +88,7 @@ def get_memory_state(ai_agent):
 @require_auth
 def process_interaction(ai_agent):
     """Processes a new interaction."""
-    user_id = VALID_TOKENS[request.headers.get('Authorization')]
+    user_id = VALID_TOKENS[request.headers.get('Authorization').split()[1]]
     interaction_data = request.json
     last_interactions[user_id] = interaction_data
 
@@ -102,10 +126,10 @@ def train_agent(ai_agent):
 
     avg_loss = ai_agent.train_on_batch(batch_data)
 
-    # Clear the log file after training
-    open(ai_agent.training_log_path, 'w').close()
+    # Archive the log file
+    archive_path = os.path.join(ARCHIVE_DIR, f"{ai_agent.identity.user_id}_{torch.randint(0, 100000, (1,)).item()}.jsonl")
+    os.rename(ai_agent.training_log_path, archive_path)
 
-    # Save the updated model state
     ai_agent.save_state()
 
     return jsonify({"status": "training complete", "average_loss": avg_loss})
@@ -114,7 +138,7 @@ def train_agent(ai_agent):
 @require_auth
 def explain_update(ai_agent):
     """Explains the last memory update using gradient-based feature importance."""
-    user_id = VALID_TOKENS[request.headers.get('Authorization')]
+    user_id = VALID_TOKENS[request.headers.get('Authorization').split()[1]]
 
     if user_id not in last_explanation_data:
         return jsonify({"explanation": "No memory update has occurred yet for which an explanation can be generated."})
