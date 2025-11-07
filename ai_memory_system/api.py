@@ -1,24 +1,65 @@
 from flask import Flask, request, jsonify, send_from_directory
 from functools import wraps
 from .core import MemoryAI
-from .tokens import VALID_TOKENS
 import numpy as np
+import os
+import torch
+import json
 
 app = Flask(__name__)
 
-# Initialize the AI agent
-user_id = "api_user_001"
-initial_identity_props = {"age": 30, "interests": ["python", "api_design"]}
-ai_agent = MemoryAI(user_id, initial_identity_props)
-last_interaction = None
+# Directory to store agent state
+DATA_DIR = "agent_data"
+ARCHIVE_DIR = os.path.join(DATA_DIR, "archive")
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+if not os.path.exists(ARCHIVE_DIR):
+    os.makedirs(ARCHIVE_DIR)
+
+# Load valid tokens from environment variable
+VALID_TOKENS = {}
+def load_tokens_from_env():
+    global VALID_TOKENS
+    VALID_TOKENS_str = os.environ.get('VALID_API_TOKENS', '')
+    VALID_TOKENS = dict(token.split(':') for token in VALID_TOKENS_str.split(',') if ':' in token)
+
+load_tokens_from_env()
+
+
+# Dictionary to hold agent instances, keyed by user_id
+agents = {}
+last_interactions = {}
+last_explanation_data = {}
 
 def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if token and token in VALID_TOKENS:
-            return f(*args, **kwargs)
-        return jsonify({"message": "Authentication required"}), 401
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return jsonify({"message": "Authorization header missing"}), 401
+
+        try:
+            token_type, token = auth_header.split()
+            if token_type.lower() != 'bearer':
+                return jsonify({"message": "Invalid token type"}), 401
+        except ValueError:
+            return jsonify({"message": "Invalid Authorization header format"}), 401
+
+        if not token or token not in VALID_TOKENS:
+            return jsonify({"message": "Authentication required"}), 401
+
+        user_id = VALID_TOKENS[token]
+
+        # Load or create agent for the user
+        if user_id not in agents:
+            initial_identity_props = {"age": 30, "interests": ["python", "api_design"]}
+            state_filepath = os.path.join(DATA_DIR, f"{user_id}.pt")
+            training_log_path = os.path.join(DATA_DIR, f"{user_id}_training_log.jsonl")
+            agents[user_id] = MemoryAI(user_id, initial_identity_props, state_filepath=state_filepath, training_log_path=training_log_path)
+
+        ai_agent = agents[user_id]
+
+        return f(ai_agent, *args, **kwargs)
     return decorated
 
 @app.route('/static/<path:path>')
@@ -28,8 +69,8 @@ def send_static(path):
 @app.route('/login', methods=['POST'])
 def login():
     """Returns a token for a given user."""
-    # This is a simplified example; in a real application, you would use a
-    # more sophisticated authentication system.
+    # This is a simplified example for demonstration.
+    # In a real application, you would use a proper authentication provider.
     username = request.json.get('username')
     for token, user in VALID_TOKENS.items():
         if user == username:
@@ -38,56 +79,95 @@ def login():
 
 @app.route('/memory', methods=['GET'])
 @require_auth
-def get_memory_state():
+def get_memory_state(ai_agent):
     """Returns the current memory state."""
     memory_state = ai_agent.memory_controller.get_state().tolist()
     return jsonify({"memory_state": memory_state})
 
 @app.route('/interact', methods=['POST'])
 @require_auth
-def process_interaction():
+def process_interaction(ai_agent):
     """Processes a new interaction."""
-    global last_interaction
+    user_id = VALID_TOKENS[request.headers.get('Authorization').split()[1]]
     interaction_data = request.json
-    last_interaction = interaction_data
-    loss = ai_agent.process_interaction(interaction_data)
+    last_interactions[user_id] = interaction_data
 
-    if loss is not None:
-        return jsonify({"status": "event processed", "loss": loss})
+    input_tensors = ai_agent.process_interaction(interaction_data)
+
+    if input_tensors is not None:
+        last_explanation_data[user_id] = input_tensors
+        ai_agent.save_state()
+        return jsonify({"status": "event processed, data logged for training"})
     else:
+        ai_agent.save_state()
         return jsonify({"status": "no event detected"})
 
 @app.route('/identity', methods=['POST'])
 @require_auth
-def update_identity():
+def update_identity(ai_agent):
     """Updates the user's properties."""
     new_properties = request.json
     ai_agent.identity.update_properties(new_properties)
+    ai_agent.save_state()
     return jsonify({"status": "identity updated"})
+
+@app.route('/train', methods=['POST'])
+@require_auth
+def train_agent(ai_agent):
+    """Triggers a training cycle on logged data."""
+    if not ai_agent.training_log_path or not os.path.exists(ai_agent.training_log_path):
+        return jsonify({"message": "No training data to process."}), 404
+
+    with open(ai_agent.training_log_path, 'r') as f:
+        batch_data = [json.loads(line) for line in f]
+
+    if not batch_data:
+        return jsonify({"message": "Training log is empty."}), 200
+
+    avg_loss = ai_agent.train_on_batch(batch_data)
+
+    # Archive the log file
+    archive_path = os.path.join(ARCHIVE_DIR, f"{ai_agent.identity.user_id}_{torch.randint(0, 100000, (1,)).item()}.jsonl")
+    os.rename(ai_agent.training_log_path, archive_path)
+
+    ai_agent.save_state()
+
+    return jsonify({"status": "training complete", "average_loss": avg_loss})
 
 @app.route('/explain', methods=['GET'])
 @require_auth
-def explain_update():
-    """Explains the last memory update."""
-    if last_interaction is None:
-        return jsonify({"explanation": "No interaction has occurred yet."})
+def explain_update(ai_agent):
+    """Explains the last memory update using gradient-based feature importance."""
+    user_id = VALID_TOKENS[request.headers.get('Authorization').split()[1]]
 
-    param_ranges = {
-        'significance': [0.0, 1.0],
-        'content': [0.0, 1.0] # This is a simplification for the purpose of the example
+    if user_id not in last_explanation_data:
+        return jsonify({"explanation": "No memory update has occurred yet for which an explanation can be generated."})
+
+    input_tensors = last_explanation_data[user_id]
+
+    for key, tensor in input_tensors.items():
+        input_tensors[key] = tensor.clone().detach().requires_grad_(True)
+
+    predicted_delta_m = ai_agent.memory_controller.predict_delta_m(**input_tensors)
+
+    scalar_output = torch.norm(predicted_delta_m)
+    scalar_output.backward()
+
+    grads = {
+        "memory": torch.norm(input_tensors["memory_state"].grad).item(),
+        "identity": torch.norm(input_tensors["identity_tensor"].grad).item(),
+        "event": torch.norm(input_tensors["event_tensor"].grad).item()
     }
 
-    problem = {
-        'num_vars': 2,
-        'names': ['significance', 'content'],
-        'bounds': [[0.0, 1.0], [0.0, 1.0]]
-    }
+    total_grad = sum(grads.values()) if sum(grads.values()) > 0 else 1
+    importances = {name: (grad / total_grad) * 100 for name, grad in grads.items()}
 
-    # This is a placeholder for the Sobol analysis, as it is a computationally
-    # expensive operation that should not be performed on every API request.
-    sobol_indices = [0.7, 0.3]
-
-    explanation = f"The last memory update was primarily driven by the significance of the interaction ({sobol_indices[0]:.2f}), with a smaller contribution from the content ({sobol_indices[1]:.2f})."
+    explanation = (
+        f"The last memory update was influenced by the following factors:\n"
+        f"- Current Memory State: {importances['memory']:.2f}%\n"
+        f"- User Identity: {importances['identity']:.2f}%\n"
+        f"- Interaction Event: {importances['event']:.2f}%"
+    )
 
     return jsonify({"explanation": explanation})
 

@@ -91,10 +91,26 @@ python3 -m ai_memory_system.api
 *   `POST /interact`: Processes a new interaction.
 *   `GET /explain`: Explains the last memory update.
 *   `POST /identity`: Updates the user's properties.
+*   `POST /train`: Triggers a training cycle on logged data.
+
+### Asynchronous Training
+
+To improve performance and scalability, the AI model is not trained in real-time with every interaction. Instead, training data is logged, and training is performed asynchronously. To trigger a training cycle, send a `POST` request to the `/train` endpoint.
+
+### Configuration
+
+All hyperparameters for the system are stored in the `ai_memory_system/config.py` file. You can modify this file to tune the performance of the AI.
 
 ### Authentication
 
-The API uses token-based authentication. To get a token, send a `POST` request to the `/login` endpoint with a JSON body containing your username:
+The API uses token-based authentication. The valid tokens are loaded from the `VALID_API_TOKENS` environment variable. The format for this variable is a comma-separated list of `token:username` pairs.
+
+Example:
+```bash
+export VALID_API_TOKENS="my-secret-token:user1,another-secret-token:user2"
+```
+
+To get a token, send a `POST` request to the `/login` endpoint with a JSON body containing your username:
 
 ```json
 {
@@ -124,6 +140,19 @@ Example `POST` request to `/interact`:
 }
 ```
 
+## Performance Evaluation
+
+To evaluate the performance of the AI system, run the `evaluate.py` script:
+
+```bash
+python3 evaluate.py
+```
+
+This script will compute the following metrics:
+
+*   **Memory Fidelity:** The mean absolute difference between the norms of the target and predicted memory updates.
+*   **Learning Stability:** The standard deviation of the training loss.
+
 ## Asynchronous Event Handling
 
 In a production environment, it is recommended to handle events asynchronously. This can be achieved by using a message queue like RabbitMQ or Kafka. The API would publish events to the message queue, and a separate worker process would consume the events and update the AI's memory. This architecture would improve the scalability and reliability of the system.
@@ -132,6 +161,5 @@ In a production environment, it is recommended to handle events asynchronously. 
 
 This project can be extended in several ways:
 
-*   **Attention Mechanisms:** An attention mechanism could be added to the `FTheta` network to allow the model to focus on specific parts of the input when computing the memory update.
-*   **Advanced Neural Architectures:** The `FTheta` network could be replaced with a more advanced architecture, such as a Transformer, to improve its performance.
+*   **Advanced Neural Architectures:** The `FTheta` network has been replaced with a Transformer-based model to capture more complex relationships between the memory state, identity, and event.
 *   **Multi-Agent Systems:** The system could be extended to support multiple AI agents, each with its own memory and identity. This would allow for the creation of more complex and interactive AI systems.
