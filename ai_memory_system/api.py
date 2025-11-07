@@ -28,8 +28,6 @@ load_tokens_from_env()
 
 # Dictionary to hold agent instances, keyed by user_id
 agents = {}
-last_interactions = {}
-last_explanation_data = {}
 
 def require_auth(f):
     @wraps(f)
@@ -88,18 +86,17 @@ def get_memory_state(ai_agent):
 @require_auth
 def process_interaction(ai_agent):
     """Processes a new interaction."""
-    user_id = VALID_TOKENS[request.headers.get('Authorization').split()[1]]
     interaction_data = request.json
-    last_interactions[user_id] = interaction_data
+    if not all(key in interaction_data for key in ['type', 'content', 'significance']):
+        return jsonify({"message": "Missing required fields"}), 400
+    ai_agent.last_interaction = interaction_data
 
     input_tensors = ai_agent.process_interaction(interaction_data)
 
     if input_tensors is not None:
-        last_explanation_data[user_id] = input_tensors
-        ai_agent.save_state()
+        ai_agent.last_explanation_data = input_tensors
         return jsonify({"status": "event processed, data logged for training"})
     else:
-        ai_agent.save_state()
         return jsonify({"status": "no event detected"})
 
 @app.route('/identity', methods=['POST'])
@@ -108,7 +105,6 @@ def update_identity(ai_agent):
     """Updates the user's properties."""
     new_properties = request.json
     ai_agent.identity.update_properties(new_properties)
-    ai_agent.save_state()
     return jsonify({"status": "identity updated"})
 
 @app.route('/train', methods=['POST'])
@@ -130,20 +126,16 @@ def train_agent(ai_agent):
     archive_path = os.path.join(ARCHIVE_DIR, f"{ai_agent.identity.user_id}_{torch.randint(0, 100000, (1,)).item()}.jsonl")
     os.rename(ai_agent.training_log_path, archive_path)
 
-    ai_agent.save_state()
-
     return jsonify({"status": "training complete", "average_loss": avg_loss})
 
 @app.route('/explain', methods=['GET'])
 @require_auth
 def explain_update(ai_agent):
     """Explains the last memory update using gradient-based feature importance."""
-    user_id = VALID_TOKENS[request.headers.get('Authorization').split()[1]]
-
-    if user_id not in last_explanation_data:
+    if ai_agent.last_explanation_data is None:
         return jsonify({"explanation": "No memory update has occurred yet for which an explanation can be generated."})
 
-    input_tensors = last_explanation_data[user_id]
+    input_tensors = ai_agent.last_explanation_data
 
     for key, tensor in input_tensors.items():
         input_tensors[key] = tensor.clone().detach().requires_grad_(True)

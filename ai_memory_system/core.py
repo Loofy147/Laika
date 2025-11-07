@@ -41,6 +41,9 @@ class MemoryAI:
 
         self.training_log_path = training_log_path
 
+        self.last_interaction = None
+        self.last_explanation_data = None
+
     def save_state(self):
         """Saves the agent's state."""
         if self.state_filepath:
@@ -92,6 +95,8 @@ class MemoryAI:
         target_delta_m = self.ground_truth_simulator.get_target_delta_m(event['data'], old_identity_embedding, new_identity_embedding)
 
         self.log_training_data(input_tensors, target_delta_m)
+
+        self.save_state()
 
         return input_tensors
 

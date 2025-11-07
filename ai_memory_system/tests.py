@@ -91,5 +91,112 @@ class TestCriticalGaps(unittest.TestCase):
 
         self.assertNotAlmostEqual(target1_norm.item(), target2_norm.item(), delta=1e-5, msg="Identity update did not significantly change the ground truth target.")
 
+    def test_model_weights_change_after_training(self):
+        """Verify that the model's weights change after a training cycle."""
+        from ai_memory_system.api import agents  # Import agents dict
+
+        headers = {'Authorization': 'Bearer test-token'}
+
+        # 1. Trigger an interaction to create agent and log data
+        interaction = {"type": "chat", "content": "This is a test interaction.", "significance": 0.9}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 200)
+
+        # 2. Get the agent instance and deepcopy the initial weights
+        user_id = "user1"
+        ai_agent = agents[user_id]
+        initial_weights = copy.deepcopy(ai_agent.memory_controller.f_theta.state_dict())
+
+        # 3. Trigger the training endpoint
+        train_response = self.app.post('/train', headers=headers)
+        self.assertEqual(train_response.status_code, 200)
+
+        # 4. Get the new weights
+        trained_weights = ai_agent.memory_controller.f_theta.state_dict()
+
+        # 5. Compare the weights
+        weights_have_changed = False
+        for key in initial_weights:
+            # Check if the tensors are not equal
+            if not torch.equal(initial_weights[key], trained_weights[key]):
+                weights_have_changed = True
+                break
+
+        self.assertTrue(weights_have_changed, "Model weights did not change after training.")
+
+    def test_memory_update(self):
+        """Verify that the memory state changes after an interaction."""
+        from ai_memory_system.api import agents
+
+        headers = {'Authorization': 'Bearer test-token'}
+
+        # Get the initial memory state
+        response = self.app.get('/memory', headers=headers)
+        self.assertEqual(response.status_code, 200)
+        initial_memory = response.json['memory_state']
+
+        # Trigger an interaction
+        interaction = {"type": "chat", "content": "This is a test interaction.", "significance": 0.9}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 200)
+
+        # Get the new memory state
+        response = self.app.get('/memory', headers=headers)
+        self.assertEqual(response.status_code, 200)
+        new_memory = response.json['memory_state']
+
+        # Check that the memory state has changed
+        self.assertNotEqual(initial_memory, new_memory)
+
+    def test_identity_update(self):
+        """Verify that the identity embedding changes after an identity update."""
+        from ai_memory_system.api import agents
+
+        headers = {'Authorization': 'Bearer test-token'}
+
+        # Trigger an interaction to create the agent
+        interaction = {"type": "chat", "content": "This is a test interaction.", "significance": 0.9}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 200)
+
+        user_id = "user1"
+        ai_agent = agents[user_id]
+        initial_identity = ai_agent.identity.get_properties_tensor()
+
+        # Update the identity
+        new_properties = {"interests": ["python", "machine_learning"]}
+        response = self.app.post('/identity', json=new_properties, headers=headers)
+        self.assertEqual(response.status_code, 200)
+
+        # Get the new identity
+        new_identity = ai_agent.identity.get_properties_tensor()
+
+        # Check that the identity embedding has changed
+        self.assertFalse(torch.equal(initial_identity, new_identity))
+
+    def test_interact_input_validation(self):
+        """Verify that the /interact endpoint validates input."""
+        headers = {'Authorization': 'Bearer test-token'}
+
+        # Missing 'type'
+        interaction = {"content": "Test input validation.", "significance": 0.9}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 400)
+
+        # Missing 'content'
+        interaction = {"type": "chat", "significance": 0.9}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 400)
+
+        # Missing 'significance'
+        interaction = {"type": "chat", "content": "Test input validation."}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 400)
+
+        # Valid request
+        interaction = {"type": "chat", "content": "Test input validation.", "significance": 0.9}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 200)
+
 if __name__ == '__main__':
     unittest.main()
