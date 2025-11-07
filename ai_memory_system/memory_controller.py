@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
 
 class TransformerFTheta(nn.Module):
     """Transformer-based network to compute memory updates (ΔM)."""
@@ -62,3 +63,18 @@ class MemoryController:
 
     def predict_delta_m(self, memory_state, identity_tensor, event_tensor):
         return self.f_theta(memory_state, identity_tensor, event_tensor)
+
+    def save_state(self, filepath):
+        """Saves the memory state and the model parameters to a file."""
+        state = {
+            'memory_state': self.state,
+            'f_theta_state_dict': self.f_theta.state_dict()
+        }
+        torch.save(state, filepath)
+
+    def load_state(self, filepath):
+        """Loads the memory state and the model parameters from a file."""
+        if os.path.exists(filepath):
+            state = torch.load(filepath)
+            self.state = state['memory_state']
+            self.f_theta.load_state_dict(state['f_theta_state_dict'])

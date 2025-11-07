@@ -12,7 +12,7 @@ from .memory_controller import MemoryController
 
 class MemoryAI:
     """Integrates components and orchestrates the memory update and learning process."""
-    def __init__(self, user_id, initial_identity_properties, memory_size=128, identity_embedding_size=384, event_embedding_size=384, patience=5, min_delta=1e-5):
+    def __init__(self, user_id, initial_identity_properties, memory_size=128, identity_embedding_size=384, event_embedding_size=384, patience=5, min_delta=1e-5, state_filepath=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device=self.device)
 
@@ -36,6 +36,15 @@ class MemoryAI:
         self.min_delta = min_delta
         self.best_loss = float('inf')
         self.patience_counter = 0
+
+        self.state_filepath = state_filepath
+        if self.state_filepath:
+            self.memory_controller.load_state(self.state_filepath)
+
+    def save_state(self):
+        """Saves the agent's state."""
+        if self.state_filepath:
+            self.memory_controller.save_state(self.state_filepath)
 
     def _prepare_input_tensors(self, memory_state, identity_tensor, event_data):
         """Creates an event tensor and returns a dictionary of input tensors."""
@@ -70,8 +79,8 @@ class MemoryAI:
         event = self.event_detector.detect(interaction_data)
         if event:
             logging.info(f"Event detected: {event['event_type']} - '{interaction_data['content']}' (Threshold: {self.event_detector.threshold:.2f})")
-            loss = self.update_memory_and_learn(event['data'])
-            return loss
+            loss, input_tensors = self.update_memory_and_learn(event['data'])
+            return loss, input_tensors
         return None
 
     def update_memory_and_learn(self, event_data, dt=1.0):
@@ -86,7 +95,7 @@ class MemoryAI:
         self.memory_controller.update(predicted_delta_m.detach(), dt=dt)
 
         loss = self.train_f_theta(input_tensors, target_delta_m)
-        return loss
+        return loss, input_tensors
 
     def train_f_theta(self, input_tensors, target_output):
         """Performs a single training step for the f_theta network."""
