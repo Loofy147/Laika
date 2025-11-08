@@ -5,8 +5,32 @@ import numpy as np
 import os
 import torch
 import json
+from .lock_manager import UserStateLockManager
+from .validation import InteractionRequest
+from pydantic import ValidationError
+from prometheus_flask_exporter import PrometheusMetrics
+from prometheus_client import Counter, Histogram
 
 app = Flask(__name__)
+metrics = PrometheusMetrics(app)
+lock_manager = UserStateLockManager(timeout=5.0)
+
+# Custom metrics
+interaction_counter = Counter(
+    'ai_interactions_total',
+    'Total number of interactions',
+    ['user_id', 'event_detected']
+)
+
+memory_norm_histogram = Histogram(
+    'ai_memory_norm',
+    'Memory state norm distribution'
+)
+
+training_loss_histogram = Histogram(
+    'ai_training_loss',
+    'Training loss distribution'
+)
 
 # Directory to store agent state
 DATA_DIR = "agent_data"
@@ -86,18 +110,37 @@ def get_memory_state(ai_agent):
 @require_auth
 def process_interaction(ai_agent):
     """Processes a new interaction."""
-    interaction_data = request.json
-    if not all(key in interaction_data for key in ['type', 'content', 'significance']):
-        return jsonify({"message": "Missing required fields"}), 400
+    user_id = VALID_TOKENS[request.headers.get('Authorization').split()[1]]
+
+    try:
+        validated = InteractionRequest(**request.json)
+        interaction_data = validated.dict()
+    except ValidationError as e:
+        return jsonify({"error": str(e)}), 400
+
     ai_agent.last_interaction = interaction_data
 
-    input_tensors = ai_agent.process_interaction(interaction_data)
+    with lock_manager.user_lock(user_id):
+        input_tensors = ai_agent.process_interaction(interaction_data)
+        ai_agent.save_state()
 
     if input_tensors is not None:
+        event_detected = True
         ai_agent.last_explanation_data = input_tensors
-        return jsonify({"status": "event processed, data logged for training"})
+        status = "event processed, data logged for training"
     else:
-        return jsonify({"status": "no event detected"})
+        event_detected = False
+        status = "no event detected"
+
+    interaction_counter.labels(
+        user_id=user_id,
+        event_detected=str(event_detected)
+    ).inc()
+
+    memory_norm = torch.norm(ai_agent.memory_controller.get_state()).item()
+    memory_norm_histogram.observe(memory_norm)
+
+    return jsonify({"status": status})
 
 @app.route('/identity', methods=['POST'])
 @require_auth
@@ -120,7 +163,9 @@ def train_agent(ai_agent):
     if not batch_data:
         return jsonify({"message": "Training log is empty."}), 200
 
-    avg_loss = ai_agent.train_on_batch(batch_data)
+    with lock_manager.user_lock(ai_agent.identity.user_id):
+        avg_loss = ai_agent.train_on_batch(batch_data)
+        ai_agent.save_state()
 
     # Archive the log file
     archive_path = os.path.join(ARCHIVE_DIR, f"{ai_agent.identity.user_id}_{torch.randint(0, 100000, (1,)).item()}.jsonl")

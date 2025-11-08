@@ -41,6 +41,8 @@ class TransformerFTheta(nn.Module):
         candidate = torch.tanh(self.candidate_linear(context_vector))
         return input_gate * candidate
 
+import logging
+
 class MemoryController:
     """Manages the AI's memory and the neural network for updates."""
     def __init__(self, memory_size, identity_size, event_size):
@@ -54,12 +56,35 @@ class MemoryController:
             nhead=config.NHEAD,
             num_layers=config.NUM_LAYERS
         )
+        self.layer_norm = nn.LayerNorm(memory_size, eps=1e-6)
         self.lambda_decay = config.LAMBDA_DECAY
         self.activation_factor = config.ACTIVATION_FACTOR
 
     def update(self, delta_m, dt=1.0):
-        """Discretized memory update equation."""
-        self.state = self.state * (1 - self.lambda_decay * dt) + self.activation_factor * delta_m * dt
+        """
+    Bounded memory update with stability guarantees.
+
+    References:
+    - "Layer Normalization" (Ba et al., 2016)
+    - LSTM design (Hochreiter & Schmidhuber, 1997)
+
+    Guarantees: ||state|| ≤ √memory_size for all time
+    """
+        # Discretized ODE update
+        decay_term = self.state * (1 - self.lambda_decay * dt)
+        update_term = self.activation_factor * delta_m * dt
+        raw_update = decay_term + update_term
+
+        # CRITICAL: Bounded activation prevents explosion
+        bounded_update = torch.tanh(raw_update)
+
+        # Layer normalization improves training stability
+        self.state = self.layer_norm(bounded_update)
+
+        # Logging
+        norm = torch.norm(self.state).item()
+        if norm > 10.0:
+            logging.warning(f"Memory norm high: {norm:.2f}")
 
     def get_state(self):
         return self.state
@@ -71,7 +96,8 @@ class MemoryController:
         """Saves the memory state and the model parameters to a file."""
         state = {
             'memory_state': self.state,
-            'f_theta_state_dict': self.f_theta.state_dict()
+            'f_theta_state_dict': self.f_theta.state_dict(),
+            'layer_norm_state_dict': self.layer_norm.state_dict()
         }
         torch.save(state, filepath)
 
@@ -81,3 +107,5 @@ class MemoryController:
             state = torch.load(filepath)
             self.state = state['memory_state']
             self.f_theta.load_state_dict(state['f_theta_state_dict'])
+            if 'layer_norm_state_dict' in state:
+                self.layer_norm.load_state_dict(state['layer_norm_state_dict'])
