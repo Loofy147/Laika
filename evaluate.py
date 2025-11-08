@@ -6,7 +6,21 @@ from ai_memory_system.core import MemoryAI
 logging.basicConfig(level=logging.INFO)
 
 def evaluate_memory_fidelity(ai_agent, interactions):
-    """Evaluates the memory fidelity of the AI agent."""
+    """
+    Evaluates the memory fidelity of the AI agent.
+
+    Memory fidelity is defined as the mean absolute difference between the
+    norms of the target and predicted memory updates. A lower value indicates
+    that the model is better at predicting the direction and magnitude of
+    memory updates.
+
+    Args:
+        ai_agent (MemoryAI): The AI agent to evaluate.
+        interactions (list): A list of interactions to use for evaluation.
+
+    Returns:
+        float: The memory fidelity score.
+    """
     target_delta_m_norms = []
     predicted_delta_m_norms = []
 
@@ -32,7 +46,19 @@ def evaluate_memory_fidelity(ai_agent, interactions):
     return np.mean(np.abs(np.array(target_delta_m_norms) - np.array(predicted_delta_m_norms)))
 
 def evaluate_learning_stability(ai_agent, interactions):
-    """Evaluates the learning stability of the AI agent."""
+    """
+    Evaluates the learning stability of the AI agent.
+
+    Note: This metric is currently a placeholder and does not provide a
+    meaningful value in the context of asynchronous training.
+
+    Args:
+        ai_agent (MemoryAI): The AI agent to evaluate.
+        interactions (list): A list of interactions to use for evaluation.
+
+    Returns:
+        float: A placeholder value of 0.0.
+    """
     losses = []
     for interaction in interactions:
         result = ai_agent.process_interaction(interaction)

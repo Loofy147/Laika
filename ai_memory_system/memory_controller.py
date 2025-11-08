@@ -5,8 +5,28 @@ import os
 from . import config
 
 class TransformerFTheta(nn.Module):
-    """Transformer-based network to compute memory updates (ΔM)."""
+    """
+    A Transformer-based model for computing memory updates (ΔM).
+
+    This model uses a Transformer encoder to process the memory state,
+    identity, and event tensors as a sequence. The output of the
+    transformer is then used to generate a gated memory update.
+    """
     def __init__(self, memory_size, identity_size, event_size, hidden_size, output_size, nhead, num_layers):
+        """
+        Initializes the TransformerFTheta model.
+
+        Args:
+            memory_size (int): The size of the memory state vector.
+            identity_size (int): The size of the identity embedding.
+            event_size (int): The size of the event embedding.
+            hidden_size (int): The hidden size for the projection layers and
+                the Transformer encoder.
+            output_size (int): The size of the output vector (ΔM).
+            nhead (int): The number of attention heads in the Transformer
+                encoder.
+            num_layers (int): The number of layers in the Transformer encoder.
+        """
         super(TransformerFTheta, self).__init__()
         # Projection layers to create a common embedding space
         self.mem_proj = nn.Linear(memory_size, hidden_size)
@@ -27,6 +47,17 @@ class TransformerFTheta(nn.Module):
         self.candidate_linear = nn.Linear(hidden_size, output_size)
 
     def forward(self, memory_state, identity_tensor, event_tensor):
+        """
+        Performs the forward pass of the model.
+
+        Args:
+            memory_state (torch.Tensor): The current memory state.
+            identity_tensor (torch.Tensor): The user's identity tensor.
+            event_tensor (torch.Tensor): The event tensor.
+
+        Returns:
+            torch.Tensor: The predicted memory update (ΔM).
+        """
         # Project inputs to common dimension
         mem_p = self.ln1(torch.tanh(self.mem_proj(memory_state)))
         id_p = self.ln2(torch.tanh(self.id_proj(identity_tensor)))
@@ -48,8 +79,22 @@ class TransformerFTheta(nn.Module):
         return input_gate * candidate
 
 class MemoryController:
-    """Manages the AI's memory and the neural network for updates."""
+    """
+    Manages the AI's memory and the neural network for updates.
+
+    This class is responsible for maintaining the memory state, predicting
+    memory updates using the TransformerFTheta model, and applying the
+    updates to the memory state.
+    """
     def __init__(self, memory_size, identity_size, event_size):
+        """
+        Initializes the MemoryController.
+
+        Args:
+            memory_size (int): The size of the memory state vector.
+            identity_size (int): The size of the identity embedding.
+            event_size (int): The size of the event embedding.
+        """
         self.state = torch.zeros(1, memory_size)
         self.f_theta = TransformerFTheta(
             memory_size=memory_size,
@@ -64,18 +109,49 @@ class MemoryController:
         self.activation_factor = config.ACTIVATION_FACTOR
 
     def update(self, delta_m, dt=1.0):
-        """Discretized memory update equation."""
+        """
+        Updates the memory state using a discretized differential equation.
+
+        The equation is: M(t+dt) = M(t) * (1 - λ*dt) + a * ΔM * dt
+
+        Args:
+            delta_m (torch.Tensor): The predicted memory update.
+            dt (float, optional): The time step. Defaults to 1.0.
+        """
         self.state = self.state * (1 - self.lambda_decay * dt) + self.activation_factor * delta_m * dt
         self.state = F.normalize(self.state, p=2, dim=1)
 
     def get_state(self):
+        """
+        Returns the current memory state.
+
+        Returns:
+            torch.Tensor: The current memory state.
+        """
         return self.state
 
     def predict_delta_m(self, memory_state, identity_tensor, event_tensor):
+        """
+        Predicts the memory update (ΔM) using the TransformerFTheta model.
+
+        Args:
+            memory_state (torch.Tensor): The current memory state.
+            identity_tensor (torch.Tensor): The user's identity tensor.
+            event_tensor (torch.Tensor): The event tensor.
+
+        Returns:
+            torch.Tensor: The predicted memory update (ΔM).
+        """
         return self.f_theta(memory_state, identity_tensor, event_tensor)
 
     def save_state(self, filepath):
-        """Saves the memory state and the model parameters to a file."""
+        """
+        Saves the memory state and the model parameters to a file.
+
+        Args:
+            filepath (str): The path to the file where the state should be
+                saved.
+        """
         state = {
             'memory_state': self.state,
             'f_theta_state_dict': self.f_theta.state_dict()
@@ -83,7 +159,13 @@ class MemoryController:
         torch.save(state, filepath)
 
     def load_state(self, filepath):
-        """Loads the memory state and the model parameters from a file."""
+        """
+        Loads the memory state and the model parameters from a file.
+
+        Args:
+            filepath (str): The path to the file from which the state should
+                be loaded.
+        """
         if os.path.exists(filepath):
             state = torch.load(filepath)
             self.state = state['memory_state']
