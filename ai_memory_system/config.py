@@ -13,6 +13,7 @@ LEARNING_RATE = 0.001
 PATIENCE = 5
 MIN_DELTA = 1e-5
 MAX_GRAD_NORM = 1.0
+REPLAY_BUFFER_SIZE = 1000
 
 # Memory Controller Hyperparameters
 LAMBDA_DECAY = 0.01
@@ -24,5 +25,5 @@ WINDOW_SIZE = 10
 ADJUSTMENT_FACTOR = 0.1
 
 # Identity Module Hyperparameters
-EPSILON = 1.0
-ALPHA = 0.1
+EPSILON = 0.8
+ALPHA = 0.8
