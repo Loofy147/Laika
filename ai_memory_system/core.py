@@ -4,6 +4,8 @@ import torch.optim as optim
 import numpy as np
 import logging
 import json
+import random
+from collections import deque
 from sentence_transformers import SentenceTransformer
 from .identity_module import Identity
 from .adaptive_event_detector import AdaptiveEventDetector
@@ -59,6 +61,7 @@ class MemoryAI:
             self.memory_controller.load_state(self.state_filepath)
 
         self.training_log_path = training_log_path
+        self.replay_buffer = deque(maxlen=config.REPLAY_BUFFER_SIZE)
 
         self.last_interaction = None
         self.last_explanation_data = None
@@ -91,22 +94,16 @@ class MemoryAI:
         }
 
     def log_training_data(self, input_tensors, target_delta_m):
-        """
-        Logs the training data to a file.
-
-        Args:
-            input_tensors (dict): A dictionary of input tensors.
-            target_delta_m (torch.Tensor): The target memory update.
-        """
-        if not self.training_log_path:
-            return
-
+        """Logs the training data to a file."""
         data = {
-            "inputs": {k: v.tolist() for k, v in input_tensors.items()},
-            "target": target_delta_m.tolist()
+            "inputs": {k: v.cpu().tolist() for k, v in input_tensors.items()},
+            "target": target_delta_m.cpu().tolist()
         }
-        with open(self.training_log_path, 'a') as f:
-            f.write(json.dumps(data) + '\n')
+        self.replay_buffer.append(data)
+
+        if self.training_log_path:
+            with open(self.training_log_path, 'a') as f:
+                f.write(json.dumps(data) + '\n')
 
     def process_interaction(self, interaction_data):
         """
@@ -147,15 +144,12 @@ class MemoryAI:
         return input_tensors
 
     def train_on_batch(self, batch_data):
-        """
-        Performs a training step on a batch of logged data.
+        """Performs a training step on a batch of logged data."""
+        if len(self.replay_buffer) > len(batch_data):
+            replay_sample_size = min(len(self.replay_buffer), len(batch_data) * 2)
+            replay_samples = random.sample(self.replay_buffer, replay_sample_size)
+            batch_data.extend(replay_samples)
 
-        Args:
-            batch_data (list): A list of training data points.
-
-        Returns:
-            float: The average loss for the batch.
-        """
         total_loss = 0.0
         for data in batch_data:
             input_tensors = {k: torch.tensor(v).to(self.device) for k, v in data['inputs'].items()}

@@ -33,9 +33,14 @@ class TransformerFTheta(nn.Module):
         self.id_proj = nn.Linear(identity_size, hidden_size)
         self.event_proj = nn.Linear(event_size, hidden_size)
 
+        self.ln1 = nn.LayerNorm(hidden_size)
+        self.ln2 = nn.LayerNorm(hidden_size)
+        self.ln3 = nn.LayerNorm(hidden_size)
+
         # Transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.ln_out = nn.LayerNorm(hidden_size)
 
         # Gated update mechanism
         self.input_gate_linear = nn.Linear(hidden_size, output_size)
@@ -54,15 +59,16 @@ class TransformerFTheta(nn.Module):
             torch.Tensor: The predicted memory update (ΔM).
         """
         # Project inputs to common dimension
-        mem_p = torch.tanh(self.mem_proj(memory_state))
-        id_p = torch.tanh(self.id_proj(identity_tensor))
-        event_p = torch.tanh(self.event_proj(event_tensor))
+        mem_p = self.ln1(torch.tanh(self.mem_proj(memory_state)))
+        id_p = self.ln2(torch.tanh(self.id_proj(identity_tensor)))
+        event_p = self.ln3(torch.tanh(self.event_proj(event_tensor)))
 
         # Stack for transformer
         inputs_p = torch.stack([mem_p, id_p, event_p], dim=1)
 
         # Pass through transformer
         transformer_output = self.transformer_encoder(inputs_p)
+        transformer_output = self.ln_out(transformer_output)
 
         # Use the mean of the transformer output as the context
         context_vector = torch.mean(transformer_output, dim=1)
@@ -113,6 +119,7 @@ class MemoryController:
             dt (float, optional): The time step. Defaults to 1.0.
         """
         self.state = self.state * (1 - self.lambda_decay * dt) + self.activation_factor * delta_m * dt
+        self.state = F.normalize(self.state, p=2, dim=1)
 
     def get_state(self):
         """
