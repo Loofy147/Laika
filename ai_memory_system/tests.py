@@ -7,16 +7,35 @@ import copy
 from ai_memory_system.api import app, DATA_DIR, ARCHIVE_DIR, load_tokens_from_env
 
 class TestCriticalGaps(unittest.TestCase):
+    """
+    Test suite for the AI Memory System API.
+
+    This class contains tests for authentication, training log archiving,
+    identity updates, model weight changes, memory updates, and input
+    validation.
+    """
 
     @classmethod
     def setUpClass(cls):
-        """Set up a clean environment for the entire test class."""
+        """
+        Set up a clean environment for the entire test class.
+
+        This method is called once before any tests in the class are run. It
+        sets the 'VALID_API_TOKENS' environment variable and configures the
+        Flask app for testing.
+        """
         os.environ['VALID_API_TOKENS'] = 'test-token:user1,another-token:user2'
         load_tokens_from_env()
         app.config['TESTING'] = True
 
     def setUp(self):
-        """Set up a clean environment for each test."""
+        """
+        Set up a clean environment for each test.
+
+        This method is called before each test is run. It cleans up and
+        recreates the data and archive directories to ensure that each test
+        starts with a clean state.
+        """
         # Clean up and recreate directories
         if os.path.exists(DATA_DIR):
             shutil.rmtree(DATA_DIR)
@@ -27,14 +46,22 @@ class TestCriticalGaps(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        """Clean up environment after all tests."""
+        """
+        Clean up the environment after all tests.
+
+        This method is called once after all tests in the class have been run.
+        It cleans up the data directory and unsets the 'VALID_API_TOKENS'
+        environment variable.
+        """
         if os.path.exists(DATA_DIR):
             shutil.rmtree(DATA_DIR)
         if 'VALID_API_TOKENS' in os.environ:
             del os.environ['VALID_API_TOKENS']
 
     def test_authentication_required(self):
-        """Verify that endpoints are protected and require a valid token."""
+        """
+        Tests that the API endpoints are protected by authentication.
+        """
         response = self.app.get('/memory')
         self.assertEqual(response.status_code, 401)
 
@@ -46,7 +73,9 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_training_log_archiving(self):
-        """Verify that the training log is archived, not deleted."""
+        """
+        Tests that the training log is archived after training.
+        """
         headers = {'Authorization': 'Bearer test-token'}
 
         interaction = {"type": "chat", "content": "Test log archiving.", "significance": 0.9}
@@ -66,7 +95,9 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertTrue(archive_files[0].startswith(user_id))
 
     def test_identity_update_affects_ground_truth(self):
-        """Verify that an identity update changes the target delta_m."""
+        """
+        Tests that updating the user's identity affects the ground truth.
+        """
         headers = {'Authorization': 'Bearer test-token'}
 
         interaction1 = {"type": "chat", "content": "A normal message.", "significance": 0.8}
@@ -92,7 +123,9 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertNotAlmostEqual(target1_norm.item(), target2_norm.item(), delta=1e-5, msg="Identity update did not significantly change the ground truth target.")
 
     def test_model_weights_change_after_training(self):
-        """Verify that the model's weights change after a training cycle."""
+        """
+        Tests that the model's weights change after a training cycle.
+        """
         from ai_memory_system.api import agents  # Import agents dict
 
         headers = {'Authorization': 'Bearer test-token'}
@@ -125,7 +158,9 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertTrue(weights_have_changed, "Model weights did not change after training.")
 
     def test_memory_update(self):
-        """Verify that the memory state changes after an interaction."""
+        """
+        Tests that the memory state is updated after an interaction.
+        """
         from ai_memory_system.api import agents
 
         headers = {'Authorization': 'Bearer test-token'}
@@ -149,7 +184,9 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertNotEqual(initial_memory, new_memory)
 
     def test_identity_update(self):
-        """Verify that the identity embedding changes after an identity update."""
+        """
+        Tests that the user's identity is updated correctly.
+        """
         from ai_memory_system.api import agents
 
         headers = {'Authorization': 'Bearer test-token'}
@@ -175,7 +212,9 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertFalse(torch.equal(initial_identity, new_identity))
 
     def test_interact_input_validation(self):
-        """Verify that the /interact endpoint validates input."""
+        """
+        Tests that the /interact endpoint validates its input.
+        """
         headers = {'Authorization': 'Bearer test-token'}
 
         # Missing 'type'

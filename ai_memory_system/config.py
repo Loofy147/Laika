@@ -17,39 +17,79 @@ def get_env_float(key, default):
     return float(os.environ.get(key, default))
 
 
-# Model Hyperparameters
-MEMORY_SIZE = get_env_int('MEMORY_SIZE', 128)
-IDENTITY_EMBEDDING_SIZE = get_env_int('IDENTITY_EMBEDDING_SIZE', 384)
-EVENT_EMBEDDING_SIZE = get_env_int('EVENT_EMBEDDING_SIZE', 384)
-HIDDEN_SIZE = get_env_int('HIDDEN_SIZE', 512)
-NHEAD = get_env_int('NHEAD', 4)
-NUM_LAYERS = get_env_int('NUM_LAYERS', 2)
+# --- Model Hyperparameters ---
+MEMORY_SIZE = 128
+"""The size of the memory state vector."""
+
+IDENTITY_EMBEDDING_SIZE = 384
+"""The size of the identity embedding."""
+
+EVENT_EMBEDDING_SIZE = 384
+"""The size of the event embedding."""
+
+HIDDEN_SIZE = 512
+"""The hidden size for the Transformer model."""
+
+NHEAD = 4
+"""The number of attention heads in the Transformer model."""
+
+NUM_LAYERS = 2
+"""The number of layers in the Transformer model."""
 
 
-# Training
-LEARNING_RATE = get_env_float('LEARNING_RATE', 0.001)
-PATIENCE = get_env_int('PATIENCE', 5)
-MIN_DELTA = get_env_float('MIN_DELTA', 1e-5)
-MAX_GRAD_NORM = get_env_float('MAX_GRAD_NORM', 1.0)
+# --- Training Hyperparameters ---
+LEARNING_RATE = 0.001
+"""The initial learning rate for the AdamW optimizer."""
 
-# Replay Buffer
-REPLAY_BUFFER_SIZE = get_env_int('REPLAY_BUFFER_SIZE', 10000)
-REPLAY_SAMPLE_RATIO = get_env_float('REPLAY_SAMPLE_RATIO', 0.5)
+PATIENCE = 5
+"""
+The number of epochs to wait for improvement before reducing the learning
+rate.
+"""
 
-# Memory Dynamics
-LAMBDA_DECAY = get_env_float('LAMBDA_DECAY', 0.01)
-ACTIVATION_FACTOR = get_env_float('ACTIVATION_FACTOR', 1.0)
+MIN_DELTA = 1e-5
+"""
+The minimum change in the monitored quantity to qualify as an improvement.
+"""
 
-# Event Detector Hyperparameters
-EVENT_THRESHOLD = get_env_float('EVENT_THRESHOLD', 0.6)
-WINDOW_SIZE = get_env_int('WINDOW_SIZE', 10)
-ADJUSTMENT_FACTOR = get_env_float('ADJUSTMENT_FACTOR', 0.1)
+MAX_GRAD_NORM = 1.0
+"""The maximum norm of the gradients for gradient clipping."""
 
 
-# Privacy
-EPSILON = get_env_float('PRIVACY_EPSILON', 5.0)
-ALPHA = get_env_float('ALPHA', 0.1)
+# --- Memory Controller Hyperparameters ---
+LAMBDA_DECAY = 0.01
+"""The decay rate for the memory state."""
 
-# API
-USER_LOCK_TIMEOUT = get_env_float('USER_LOCK_TIMEOUT', 5.0)
-MAX_REQUEST_SIZE = get_env_int('MAX_REQUEST_SIZE', 5000)
+ACTIVATION_FACTOR = 1.0
+"""The activation factor for the memory update."""
+
+
+# --- Event Detector Hyperparameters ---
+EVENT_THRESHOLD = 0.6
+"""The initial threshold for detecting significant events."""
+
+WINDOW_SIZE = 10
+"""
+The size of the sliding window for calculating the running average of
+significance scores.
+"""
+
+ADJUSTMENT_FACTOR = 0.1
+"""
+The factor by which the event threshold is adjusted based on the running
+average.
+"""
+
+
+# --- Identity Module Hyperparameters ---
+EPSILON = 1.0
+"""
+The epsilon value for the Laplace mechanism in differential privacy. A
+smaller value means more privacy.
+"""
+
+ALPHA = 0.1
+"""
+The alpha value for the exponential moving average when updating the identity
+embedding.
+"""

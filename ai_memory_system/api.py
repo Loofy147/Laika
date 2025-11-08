@@ -43,6 +43,12 @@ if not os.path.exists(ARCHIVE_DIR):
 # Load valid tokens from environment variable
 VALID_TOKENS = {}
 def load_tokens_from_env():
+    """
+    Loads valid API tokens from the 'VALID_API_TOKENS' environment variable.
+
+    The environment variable should be a comma-separated string of
+    'token:username' pairs.
+    """
     global VALID_TOKENS
     VALID_TOKENS_str = os.environ.get('VALID_API_TOKENS', '')
     VALID_TOKENS = dict(token.split(':') for token in VALID_TOKENS_str.split(',') if ':' in token)
@@ -54,6 +60,20 @@ load_tokens_from_env()
 agents = {}
 
 def require_auth(f):
+    """
+    A decorator to protect routes with token-based authentication.
+
+    It checks for a valid 'Bearer' token in the 'Authorization' header,
+    verifies the token, and loads or creates an AI agent instance for the
+    authenticated user. The agent instance is then passed to the decorated
+    function.
+
+    Args:
+        f (function): The function to decorate.
+
+    Returns:
+        function: The decorated function.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         auth_header = request.headers.get('Authorization')
@@ -86,11 +106,28 @@ def require_auth(f):
 
 @app.route('/static/<path:path>')
 def send_static(path):
+    """
+    Serves a file from the 'static' directory.
+
+    Args:
+        path (str): The path to the file.
+
+    Returns:
+        A Flask response object.
+    """
     return send_from_directory('static', path)
 
 @app.route('/login', methods=['POST'])
 def login():
-    """Returns a token for a given user."""
+    """
+    Logs in a user and returns an API token.
+
+    This is a simplified example for demonstration. In a real application,
+    you would use a proper authentication provider.
+
+    Returns:
+        A Flask response object.
+    """
     # This is a simplified example for demonstration.
     # In a real application, you would use a proper authentication provider.
     username = request.json.get('username')
@@ -102,22 +139,33 @@ def login():
 @app.route('/memory', methods=['GET'])
 @require_auth
 def get_memory_state(ai_agent):
-    """Returns the current memory state."""
+    """
+    Returns the current memory state of the AI agent.
+
+    Args:
+        ai_agent (MemoryAI): The AI agent for the authenticated user.
+
+    Returns:
+        A Flask response object containing the memory state.
+    """
     memory_state = ai_agent.memory_controller.get_state().tolist()
     return jsonify({"memory_state": memory_state})
 
 @app.route('/interact', methods=['POST'])
 @require_auth
 def process_interaction(ai_agent):
-    """Processes a new interaction."""
-    user_id = VALID_TOKENS[request.headers.get('Authorization').split()[1]]
+    """
+    Processes a new interaction with the AI agent.
 
-    try:
-        validated = InteractionRequest(**request.json)
-        interaction_data = validated.dict()
-    except ValidationError as e:
-        return jsonify({"error": str(e)}), 400
+    Args:
+        ai_agent (MemoryAI): The AI agent for the authenticated user.
 
+    Returns:
+        A Flask response object.
+    """
+    interaction_data = request.json
+    if not all(key in interaction_data for key in ['type', 'content', 'significance']):
+        return jsonify({"message": "Missing required fields"}), 400
     ai_agent.last_interaction = interaction_data
 
     with lock_manager.user_lock(user_id):
@@ -145,7 +193,15 @@ def process_interaction(ai_agent):
 @app.route('/identity', methods=['POST'])
 @require_auth
 def update_identity(ai_agent):
-    """Updates the user's properties."""
+    """
+    Updates the user's properties.
+
+    Args:
+        ai_agent (MemoryAI): The AI agent for the authenticated user.
+
+    Returns:
+        A Flask response object.
+    """
     new_properties = request.json
     ai_agent.identity.update_properties(new_properties)
     return jsonify({"status": "identity updated"})
@@ -153,7 +209,15 @@ def update_identity(ai_agent):
 @app.route('/train', methods=['POST'])
 @require_auth
 def train_agent(ai_agent):
-    """Triggers a training cycle on logged data."""
+    """
+    Triggers a training cycle on logged data.
+
+    Args:
+        ai_agent (MemoryAI): The AI agent for the authenticated user.
+
+    Returns:
+        A Flask response object.
+    """
     if not ai_agent.training_log_path or not os.path.exists(ai_agent.training_log_path):
         return jsonify({"message": "No training data to process."}), 404
 
@@ -176,7 +240,15 @@ def train_agent(ai_agent):
 @app.route('/explain', methods=['GET'])
 @require_auth
 def explain_update(ai_agent):
-    """Explains the last memory update using gradient-based feature importance."""
+    """
+    Explains the last memory update using gradient-based feature importance.
+
+    Args:
+        ai_agent (MemoryAI): The AI agent for the authenticated user.
+
+    Returns:
+        A Flask response object containing the explanation.
+    """
     if ai_agent.last_explanation_data is None:
         return jsonify({"explanation": "No memory update has occurred yet for which an explanation can be generated."})
 
