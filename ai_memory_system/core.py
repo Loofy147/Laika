@@ -4,8 +4,7 @@ import torch.optim as optim
 import numpy as np
 import logging
 import json
-import random
-from collections import deque
+import os
 from sentence_transformers import SentenceTransformer
 from .identity_module import Identity
 from .adaptive_event_detector import AdaptiveEventDetector
@@ -60,8 +59,9 @@ class MemoryAI:
         self.patience_counter = 0
 
         self.state_filepath = state_filepath
+        self.replay_buffer = ExperienceReplayBuffer(capacity=config.REPLAY_BUFFER_CAPACITY)
         if self.state_filepath:
-            self.memory_controller.load_state(self.state_filepath)
+            self.load_state(self.state_filepath)
 
         self.training_log_path = training_log_path
         self.replay_buffer = deque(maxlen=config.REPLAY_BUFFER_SIZE)
@@ -70,11 +70,24 @@ class MemoryAI:
         self.last_explanation_data = None
 
     def save_state(self):
-        """
-        Saves the agent's state to the file specified by `state_filepath`.
-        """
-        if self.state_filepath:
-            self.memory_controller.save_state(self.state_filepath)
+        """Saves the agent's state, including the replay buffer."""
+        if not self.state_filepath:
+            return
+        state = {
+            'memory_state': self.memory_controller.state,
+            'f_theta_state_dict': self.memory_controller.f_theta.state_dict(),
+            'replay_buffer': self.replay_buffer.buffer,
+        }
+        torch.save(state, self.state_filepath)
+
+    def load_state(self, filepath):
+        """Loads the agent's state, including the replay buffer."""
+        if not os.path.exists(filepath):
+            return
+        state = torch.load(filepath, weights_only=False)
+        self.memory_controller.state = state['memory_state']
+        self.memory_controller.f_theta.load_state_dict(state['f_theta_state_dict'])
+        self.replay_buffer.buffer = state.get('replay_buffer', self.replay_buffer.buffer)
 
     def _prepare_input_tensors(self, memory_state, identity_tensor, event_data):
         """
@@ -107,6 +120,8 @@ class MemoryAI:
         if self.training_log_path:
             with open(self.training_log_path, 'a') as f:
                 f.write(json.dumps(data) + '\n')
+
+        self.replay_buffer.add(data)
 
     def process_interaction(self, interaction_data):
         """
@@ -154,24 +169,20 @@ class MemoryAI:
             batch_data.extend(replay_samples)
 
         total_loss = 0.0
+
+        # Add new data to replay buffer
         for data in batch_data:
             self.replay_buffer.add(data)
 
-        # Sample replay experiences
-        replay_size = int(len(batch_data) * self.replay_ratio)
-        replay_samples = self.replay_buffer.sample(replay_size)
+        # Sample from replay buffer
+        if not self.replay_buffer:
+            return 0.0
 
-        # Combine and shuffle
-        combined_batch = batch_data + replay_samples
-        random.shuffle(combined_batch)
+        batch_size = min(len(self.replay_buffer), config.BATCH_SIZE)
+        training_sample = self.replay_buffer.sample(batch_size)
 
-        logging.info(f"Training: {len(batch_data)} new + {len(replay_samples)} replay")
-
-        # Train on combined batch (existing code)
-        total_loss = 0.0
-        for data in combined_batch:
-            input_tensors = {k: torch.tensor(v).to(self.device)
-                             for k, v in data['inputs'].items()}
+        for data in training_sample:
+            input_tensors = {k: torch.tensor(v).to(self.device) for k, v in data['inputs'].items()}
             target_output = torch.tensor(data['target']).to(self.device)
 
             self.optimizer.zero_grad()
@@ -186,7 +197,7 @@ class MemoryAI:
             self.optimizer.step()
             total_loss += loss.item()
 
-        avg_loss = total_loss / len(combined_batch)
+        avg_loss = total_loss / len(training_sample)
         self.scheduler.step(avg_loss)
 
         logging.info(f"Training complete: loss={avg_loss:.6f}")

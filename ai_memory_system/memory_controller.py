@@ -42,6 +42,9 @@ class TransformerFTheta(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.ln_out = nn.LayerNorm(hidden_size)
 
+        # LayerNorm for stability
+        self.layer_norm = nn.LayerNorm(hidden_size)
+
         # Gated update mechanism
         self.input_gate_linear = nn.Linear(hidden_size, output_size)
         self.candidate_linear = nn.Linear(hidden_size, output_size)
@@ -73,10 +76,13 @@ class TransformerFTheta(nn.Module):
         # Use the mean of the transformer output as the context
         context_vector = torch.mean(transformer_output, dim=1)
 
+        # Apply LayerNorm
+        context_vector = self.layer_norm(context_vector)
+
         # Gated update
         input_gate = torch.sigmoid(self.input_gate_linear(context_vector))
         candidate = torch.tanh(self.candidate_linear(context_vector))
-        return input_gate * candidate
+        return torch.tanh(input_gate * candidate)
 
 import logging
 
@@ -124,6 +130,12 @@ class MemoryController:
         self.state = self.state * (1 - self.lambda_decay * dt) + self.activation_factor * delta_m * dt
         self.state = F.normalize(self.state, p=2, dim=1)
 
+        # Clip the memory state to a maximum norm
+        max_norm = torch.sqrt(torch.tensor(self.state.shape[1]))
+        current_norm = torch.norm(self.state)
+        if current_norm > max_norm:
+            self.state = self.state * (max_norm / current_norm)
+
     def get_state(self):
         """
         Returns the current memory state.
@@ -146,33 +158,3 @@ class MemoryController:
             torch.Tensor: The predicted memory update (ΔM).
         """
         return self.f_theta(memory_state, identity_tensor, event_tensor)
-
-    def save_state(self, filepath):
-        """
-        Saves the memory state and the model parameters to a file.
-
-        Args:
-            filepath (str): The path to the file where the state should be
-                saved.
-        """
-        state = {
-            'memory_state': self.state,
-            'f_theta_state_dict': self.f_theta.state_dict(),
-            'layer_norm_state_dict': self.layer_norm.state_dict()
-        }
-        torch.save(state, filepath)
-
-    def load_state(self, filepath):
-        """
-        Loads the memory state and the model parameters from a file.
-
-        Args:
-            filepath (str): The path to the file from which the state should
-                be loaded.
-        """
-        if os.path.exists(filepath):
-            state = torch.load(filepath)
-            self.state = state['memory_state']
-            self.f_theta.load_state_dict(state['f_theta_state_dict'])
-            if 'layer_norm_state_dict' in state:
-                self.layer_norm.load_state_dict(state['layer_norm_state_dict'])

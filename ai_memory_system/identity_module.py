@@ -55,7 +55,8 @@ class Identity:
         hashed_props = self._hash_properties()
         embedding = self.embedding_model.encode(hashed_props, convert_to_tensor=True).unsqueeze(0)
 
-        sensitivity = torch.linalg.vector_norm(embedding).item()
+        # Dynamically calculate sensitivity
+        sensitivity = torch.norm(embedding).item()
 
         # Apply differential privacy
         laplace = Laplace(epsilon=self.epsilon, sensitivity=sensitivity)

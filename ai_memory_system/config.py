@@ -88,8 +88,10 @@ The epsilon value for the Laplace mechanism in differential privacy. A
 smaller value means more privacy.
 """
 
-ALPHA = 0.1
-"""
-The alpha value for the exponential moving average when updating the identity
-embedding.
-"""
+# Replay Buffer
+REPLAY_BUFFER_CAPACITY = 1000
+BATCH_SIZE = 32
+
+# Identity Module Hyperparameters
+EPSILON = 0.8
+ALPHA = 0.8

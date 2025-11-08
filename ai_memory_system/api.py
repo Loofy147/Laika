@@ -1,6 +1,10 @@
 from flask import Flask, request, jsonify, send_from_directory
 from functools import wraps
 from .core import MemoryAI
+from .validation import InteractionModel, IdentityModel
+from .lock_manager import LockManager
+from .agent_manager import AgentManager
+from pydantic import ValidationError
 import numpy as np
 import os
 import torch
@@ -56,8 +60,9 @@ def load_tokens_from_env():
 load_tokens_from_env()
 
 
-# Dictionary to hold agent instances, keyed by user_id
-agents = {}
+# Initialize managers
+agent_manager = AgentManager()
+lock_manager = LockManager()
 
 def require_auth(f):
     """
@@ -91,17 +96,11 @@ def require_auth(f):
             return jsonify({"message": "Authentication required"}), 401
 
         user_id = VALID_TOKENS[token]
+        user_lock = lock_manager.get_lock(user_id)
 
-        # Load or create agent for the user
-        if user_id not in agents:
-            initial_identity_props = {"age": 30, "interests": ["python", "api_design"]}
-            state_filepath = os.path.join(DATA_DIR, f"{user_id}.pt")
-            training_log_path = os.path.join(DATA_DIR, f"{user_id}_training_log.jsonl")
-            agents[user_id] = MemoryAI(user_id, initial_identity_props, state_filepath=state_filepath, training_log_path=training_log_path)
-
-        ai_agent = agents[user_id]
-
-        return f(ai_agent, *args, **kwargs)
+        with user_lock:
+            ai_agent = agent_manager.get_agent(user_id)
+            return f(ai_agent, *args, **kwargs)
     return decorated
 
 @app.route('/static/<path:path>')
@@ -154,23 +153,15 @@ def get_memory_state(ai_agent):
 @app.route('/interact', methods=['POST'])
 @require_auth
 def process_interaction(ai_agent):
-    """
-    Processes a new interaction with the AI agent.
+    """Processes a new interaction."""
+    try:
+        interaction_data = InteractionModel(**request.json)
+    except ValidationError as e:
+        return jsonify({"message": str(e)}), 400
 
-    Args:
-        ai_agent (MemoryAI): The AI agent for the authenticated user.
+    ai_agent.last_interaction = interaction_data.model_dump()
 
-    Returns:
-        A Flask response object.
-    """
-    interaction_data = request.json
-    if not all(key in interaction_data for key in ['type', 'content', 'significance']):
-        return jsonify({"message": "Missing required fields"}), 400
-    ai_agent.last_interaction = interaction_data
-
-    with lock_manager.user_lock(user_id):
-        input_tensors = ai_agent.process_interaction(interaction_data)
-        ai_agent.save_state()
+    input_tensors = ai_agent.process_interaction(interaction_data.model_dump())
 
     if input_tensors is not None:
         event_detected = True
@@ -193,17 +184,13 @@ def process_interaction(ai_agent):
 @app.route('/identity', methods=['POST'])
 @require_auth
 def update_identity(ai_agent):
-    """
-    Updates the user's properties.
+    """Updates the user's properties."""
+    try:
+        new_properties = IdentityModel(**request.json)
+    except ValidationError as e:
+        return jsonify({"message": str(e)}), 400
 
-    Args:
-        ai_agent (MemoryAI): The AI agent for the authenticated user.
-
-    Returns:
-        A Flask response object.
-    """
-    new_properties = request.json
-    ai_agent.identity.update_properties(new_properties)
+    ai_agent.identity.update_properties(new_properties.model_dump(exclude_unset=True))
     return jsonify({"status": "identity updated"})
 
 @app.route('/train', methods=['POST'])
