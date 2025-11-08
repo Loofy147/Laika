@@ -3,6 +3,7 @@ from functools import wraps
 from .core import MemoryAI
 from .validation import InteractionModel, IdentityModel
 from .lock_manager import LockManager
+from .agent_manager import AgentManager
 from pydantic import ValidationError
 import numpy as np
 import os
@@ -29,8 +30,8 @@ def load_tokens_from_env():
 load_tokens_from_env()
 
 
-# Dictionary to hold agent instances, keyed by user_id
-agents = {}
+# Initialize managers
+agent_manager = AgentManager()
 lock_manager = LockManager()
 
 def require_auth(f):
@@ -54,15 +55,7 @@ def require_auth(f):
         user_lock = lock_manager.get_lock(user_id)
 
         with user_lock:
-            # Load or create agent for the user
-            if user_id not in agents:
-                initial_identity_props = {"age": 30, "interests": ["python", "api_design"]}
-                state_filepath = os.path.join(DATA_DIR, f"{user_id}.pt")
-                training_log_path = os.path.join(DATA_DIR, f"{user_id}_training_log.jsonl")
-                agents[user_id] = MemoryAI(user_id, initial_identity_props, state_filepath=state_filepath, training_log_path=training_log_path)
-
-            ai_agent = agents[user_id]
-
+            ai_agent = agent_manager.get_agent(user_id)
             return f(ai_agent, *args, **kwargs)
     return decorated
 

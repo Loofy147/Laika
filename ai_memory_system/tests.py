@@ -25,6 +25,10 @@ class TestCriticalGaps(unittest.TestCase):
 
         self.app = app.test_client()
 
+        # Reset the agent manager before each test
+        from ai_memory_system.api import agent_manager
+        agent_manager.__init__()
+
     @classmethod
     def tearDownClass(cls):
         """Clean up environment after all tests."""
@@ -93,7 +97,7 @@ class TestCriticalGaps(unittest.TestCase):
 
     def test_model_weights_change_after_training(self):
         """Verify that the model's weights change after a training cycle."""
-        from ai_memory_system.api import agents  # Import agents dict
+        from ai_memory_system.api import agent_manager
 
         headers = {'Authorization': 'Bearer test-token'}
 
@@ -104,7 +108,7 @@ class TestCriticalGaps(unittest.TestCase):
 
         # 2. Get the agent instance and deepcopy the initial weights
         user_id = "user1"
-        ai_agent = agents[user_id]
+        ai_agent = agent_manager.get_agent(user_id)
         initial_weights = copy.deepcopy(ai_agent.memory_controller.f_theta.state_dict())
 
         # 3. Trigger the training endpoint
@@ -126,7 +130,7 @@ class TestCriticalGaps(unittest.TestCase):
 
     def test_memory_update(self):
         """Verify that the memory state changes after an interaction."""
-        from ai_memory_system.api import agents
+        from ai_memory_system.api import agent_manager
 
         headers = {'Authorization': 'Bearer test-token'}
 
@@ -150,7 +154,7 @@ class TestCriticalGaps(unittest.TestCase):
 
     def test_identity_update(self):
         """Verify that the identity embedding changes after an identity update."""
-        from ai_memory_system.api import agents
+        from ai_memory_system.api import agent_manager
 
         headers = {'Authorization': 'Bearer test-token'}
 
@@ -160,7 +164,7 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
         user_id = "user1"
-        ai_agent = agents[user_id]
+        ai_agent = agent_manager.get_agent(user_id)
         initial_identity = ai_agent.identity.get_properties_tensor()
 
         # Update the identity
@@ -221,6 +225,31 @@ class TestCriticalGaps(unittest.TestCase):
         interaction = {"type": "chat", "content": "Test pydantic validation.", "significance": 0.9}
         response = self.app.post('/interact', json=interaction, headers=headers)
         self.assertEqual(response.status_code, 200)
+
+    def test_replay_buffer_persistence(self):
+        """Verify that the replay buffer is saved and loaded correctly."""
+        from ai_memory_system.api import agent_manager
+
+        headers = {'Authorization': 'Bearer test-token'}
+
+        # 1. Trigger an interaction to create agent and populate replay buffer
+        interaction = {"type": "chat", "content": "This should be in the replay buffer.", "significance": 0.9}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 200)
+
+        # 2. Get the agent and check the replay buffer
+        user_id = "user1"
+        ai_agent = agent_manager.get_agent(user_id)
+        self.assertEqual(len(ai_agent.replay_buffer), 1)
+
+        # 3. "Restart" the application by creating a new agent manager
+        new_agent_manager = agent_manager.__class__()
+        reloaded_ai_agent = new_agent_manager.get_agent(user_id)
+
+        # 4. Check that the replay buffer was reloaded
+        self.assertEqual(len(reloaded_ai_agent.replay_buffer), 1)
+        self.assertEqual(reloaded_ai_agent.replay_buffer.sample(1)[0]['inputs']['event_tensor'][0][0],
+                         ai_agent.replay_buffer.sample(1)[0]['inputs']['event_tensor'][0][0])
 
 if __name__ == '__main__':
     unittest.main()

@@ -4,6 +4,7 @@ import torch.optim as optim
 import numpy as np
 import logging
 import json
+import os
 from sentence_transformers import SentenceTransformer
 from .identity_module import Identity
 from .adaptive_event_detector import AdaptiveEventDetector
@@ -37,19 +38,34 @@ class MemoryAI:
         self.patience_counter = 0
 
         self.state_filepath = state_filepath
+        self.replay_buffer = ExperienceReplayBuffer(capacity=config.REPLAY_BUFFER_CAPACITY)
         if self.state_filepath:
-            self.memory_controller.load_state(self.state_filepath)
+            self.load_state(self.state_filepath)
 
         self.training_log_path = training_log_path
-        self.replay_buffer = ExperienceReplayBuffer(capacity=config.REPLAY_BUFFER_CAPACITY)
 
         self.last_interaction = None
         self.last_explanation_data = None
 
     def save_state(self):
-        """Saves the agent's state."""
-        if self.state_filepath:
-            self.memory_controller.save_state(self.state_filepath)
+        """Saves the agent's state, including the replay buffer."""
+        if not self.state_filepath:
+            return
+        state = {
+            'memory_state': self.memory_controller.state,
+            'f_theta_state_dict': self.memory_controller.f_theta.state_dict(),
+            'replay_buffer': self.replay_buffer.buffer,
+        }
+        torch.save(state, self.state_filepath)
+
+    def load_state(self, filepath):
+        """Loads the agent's state, including the replay buffer."""
+        if not os.path.exists(filepath):
+            return
+        state = torch.load(filepath, weights_only=False)
+        self.memory_controller.state = state['memory_state']
+        self.memory_controller.f_theta.load_state_dict(state['f_theta_state_dict'])
+        self.replay_buffer.buffer = state.get('replay_buffer', self.replay_buffer.buffer)
 
     def _prepare_input_tensors(self, memory_state, identity_tensor, event_data):
         """Creates an event tensor and returns a dictionary of input tensors."""
