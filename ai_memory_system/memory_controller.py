@@ -78,6 +78,8 @@ class TransformerFTheta(nn.Module):
         candidate = torch.tanh(self.candidate_linear(context_vector))
         return input_gate * candidate
 
+import logging
+
 class MemoryController:
     """
     Manages the AI's memory and the neural network for updates.
@@ -105,6 +107,7 @@ class MemoryController:
             nhead=config.NHEAD,
             num_layers=config.NUM_LAYERS
         )
+        self.layer_norm = nn.LayerNorm(memory_size, eps=1e-6)
         self.lambda_decay = config.LAMBDA_DECAY
         self.activation_factor = config.ACTIVATION_FACTOR
 
@@ -154,7 +157,8 @@ class MemoryController:
         """
         state = {
             'memory_state': self.state,
-            'f_theta_state_dict': self.f_theta.state_dict()
+            'f_theta_state_dict': self.f_theta.state_dict(),
+            'layer_norm_state_dict': self.layer_norm.state_dict()
         }
         torch.save(state, filepath)
 
@@ -170,3 +174,5 @@ class MemoryController:
             state = torch.load(filepath)
             self.state = state['memory_state']
             self.f_theta.load_state_dict(state['f_theta_state_dict'])
+            if 'layer_norm_state_dict' in state:
+                self.layer_norm.load_state_dict(state['layer_norm_state_dict'])

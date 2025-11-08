@@ -1,4 +1,21 @@
-# Configuration for the AI Memory System
+"""
+Centralized configuration with environment variable support.
+
+Follows 12-factor app methodology.
+"""
+
+import os
+
+
+def get_env_int(key, default):
+    """Get integer from environment."""
+    return int(os.environ.get(key, default))
+
+
+def get_env_float(key, default):
+    """Get float from environment."""
+    return float(os.environ.get(key, default))
+
 
 # --- Model Hyperparameters ---
 MEMORY_SIZE = 128
