@@ -14,7 +14,7 @@ class TransformerFTheta(nn.Module):
         self.event_proj = nn.Linear(event_size, hidden_size)
 
         # Transformer encoder
-        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, batch_first=False)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         # Gated update mechanism
@@ -27,14 +27,14 @@ class TransformerFTheta(nn.Module):
         id_p = torch.tanh(self.id_proj(identity_tensor))
         event_p = torch.tanh(self.event_proj(event_tensor))
 
-        # Stack for transformer and add batch dimension
-        inputs_p = torch.stack([mem_p.squeeze(0), id_p.squeeze(0), event_p.squeeze(0)], dim=0).unsqueeze(1)
+        # Stack for transformer
+        inputs_p = torch.stack([mem_p, id_p, event_p], dim=1)
 
         # Pass through transformer
         transformer_output = self.transformer_encoder(inputs_p)
 
         # Use the mean of the transformer output as the context
-        context_vector = torch.mean(transformer_output.squeeze(1), dim=0).unsqueeze(0)
+        context_vector = torch.mean(transformer_output, dim=1)
 
         # Gated update
         input_gate = torch.sigmoid(self.input_gate_linear(context_vector))
