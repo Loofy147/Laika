@@ -14,8 +14,27 @@ from .replay_buffer import ExperienceReplayBuffer
 from . import config
 
 class MemoryAI:
-    """Integrates components and orchestrates the memory update and learning process."""
+    """
+    The main class for the Memory and Identity AI stack.
+
+    This class integrates all the components of the system, including the
+    identity module, event detector, memory controller, and ground truth
+    simulator. It orchestrates the process of handling interactions,
+    detecting events, updating memory, and training the memory update model.
+    """
     def __init__(self, user_id, initial_identity_properties, state_filepath=None, training_log_path=None):
+        """
+        Initializes the MemoryAI instance.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            initial_identity_properties (dict): A dictionary of initial
+                properties for the user's identity.
+            state_filepath (str, optional): The path to the file where the
+                agent's state is stored. Defaults to None.
+            training_log_path (str, optional): The path to the file where
+                training data is logged. Defaults to None.
+        """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device=self.device)
 
@@ -29,6 +48,8 @@ class MemoryAI:
             event_size=config.EVENT_EMBEDDING_SIZE
         )
         self.memory_controller.f_theta.to(self.device)
+        self.replay_buffer = ExperienceReplayBuffer(capacity=config.REPLAY_BUFFER_SIZE)
+        self.replay_ratio = config.REPLAY_SAMPLE_RATIO
 
         self.optimizer = optim.AdamW(self.memory_controller.f_theta.parameters(), lr=config.LEARNING_RATE)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.7, patience=config.PATIENCE)
@@ -69,7 +90,17 @@ class MemoryAI:
         self.replay_buffer.buffer = state.get('replay_buffer', self.replay_buffer.buffer)
 
     def _prepare_input_tensors(self, memory_state, identity_tensor, event_data):
-        """Creates an event tensor and returns a dictionary of input tensors."""
+        """
+        Creates an event tensor and returns a dictionary of input tensors.
+
+        Args:
+            memory_state (torch.Tensor): The current memory state.
+            identity_tensor (torch.Tensor): The user's identity tensor.
+            event_data (dict): The event data.
+
+        Returns:
+            dict: A dictionary of input tensors for the memory update model.
+        """
         event_content = event_data.get("content", "")
         event_tensor = self.embedding_model.encode(event_content, convert_to_tensor=True).to(self.device).unsqueeze(0).clone()
         return {
@@ -93,7 +124,16 @@ class MemoryAI:
         self.replay_buffer.add(data)
 
     def process_interaction(self, interaction_data):
-        """Processes an interaction, detects events, updates memory, and logs for training."""
+        """
+        Processes an interaction, detects events, updates memory, and logs for training.
+
+        Args:
+            interaction_data (dict): The interaction data.
+
+        Returns:
+            dict: A dictionary of input tensors if an event is detected,
+                  otherwise None.
+        """
         event = self.event_detector.detect(interaction_data)
         if not event:
             return None
@@ -150,12 +190,15 @@ class MemoryAI:
             loss = self.loss_function(output, target_output)
             loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(self.memory_controller.f_theta.parameters(), config.MAX_GRAD_NORM)
+            torch.nn.utils.clip_grad_norm_(
+                self.memory_controller.f_theta.parameters(),
+                config.MAX_GRAD_NORM
+            )
             self.optimizer.step()
-
             total_loss += loss.item()
 
         avg_loss = total_loss / len(training_sample)
         self.scheduler.step(avg_loss)
-        logging.info(f"  Batch training complete. Average loss: {avg_loss:.6f}, LR: {self.optimizer.param_groups[0]['lr']:.6f}")
+
+        logging.info(f"Training complete: loss={avg_loss:.6f}")
         return avg_loss

@@ -3,7 +3,12 @@ import sys
 import os
 
 def run_command(command):
-    """Runs a command and prints its output."""
+    """
+    Runs a command and prints its output.
+
+    Args:
+        command (list): The command to run as a list of strings.
+    """
     try:
         subprocess.run(command, check=True)
     except subprocess.CalledProcessError as e:
@@ -11,7 +16,12 @@ def run_command(command):
         sys.exit(1)
 
 def main():
-    """Main function."""
+    """
+    Main function to set up the development environment.
+
+    This function creates a virtual environment, installs the required
+    dependencies from the 'requirements.txt' file, and runs the test suite.
+    """
     # Create a virtual environment
     if not os.path.exists("venv"):
         run_command([sys.executable, "-m", "venv", "venv"])
