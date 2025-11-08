@@ -198,5 +198,29 @@ class TestCriticalGaps(unittest.TestCase):
         response = self.app.post('/interact', json=interaction, headers=headers)
         self.assertEqual(response.status_code, 200)
 
+    def test_pydantic_validation(self):
+        """Verify that the Pydantic models correctly validate input."""
+        headers = {'Authorization': 'Bearer test-token'}
+
+        # Invalid significance (greater than 1.0)
+        interaction = {"type": "chat", "content": "Test pydantic validation.", "significance": 1.1}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 400)
+
+        # Invalid significance (less than 0.0)
+        interaction = {"type": "chat", "content": "Test pydantic validation.", "significance": -0.1}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 400)
+
+        # Invalid type (not a string)
+        interaction = {"type": 123, "content": "Test pydantic validation.", "significance": 0.9}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 400)
+
+        # Valid request
+        interaction = {"type": "chat", "content": "Test pydantic validation.", "significance": 0.9}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 200)
+
 if __name__ == '__main__':
     unittest.main()
