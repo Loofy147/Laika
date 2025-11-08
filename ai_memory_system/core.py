@@ -12,8 +12,27 @@ from .ground_truth_simulator import GroundTruthSimulator
 from . import config
 
 class MemoryAI:
-    """Integrates components and orchestrates the memory update and learning process."""
+    """
+    The main class for the Memory and Identity AI stack.
+
+    This class integrates all the components of the system, including the
+    identity module, event detector, memory controller, and ground truth
+    simulator. It orchestrates the process of handling interactions,
+    detecting events, updating memory, and training the memory update model.
+    """
     def __init__(self, user_id, initial_identity_properties, state_filepath=None, training_log_path=None):
+        """
+        Initializes the MemoryAI instance.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            initial_identity_properties (dict): A dictionary of initial
+                properties for the user's identity.
+            state_filepath (str, optional): The path to the file where the
+                agent's state is stored. Defaults to None.
+            training_log_path (str, optional): The path to the file where
+                training data is logged. Defaults to None.
+        """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device=self.device)
 
@@ -45,12 +64,24 @@ class MemoryAI:
         self.last_explanation_data = None
 
     def save_state(self):
-        """Saves the agent's state."""
+        """
+        Saves the agent's state to the file specified by `state_filepath`.
+        """
         if self.state_filepath:
             self.memory_controller.save_state(self.state_filepath)
 
     def _prepare_input_tensors(self, memory_state, identity_tensor, event_data):
-        """Creates an event tensor and returns a dictionary of input tensors."""
+        """
+        Creates an event tensor and returns a dictionary of input tensors.
+
+        Args:
+            memory_state (torch.Tensor): The current memory state.
+            identity_tensor (torch.Tensor): The user's identity tensor.
+            event_data (dict): The event data.
+
+        Returns:
+            dict: A dictionary of input tensors for the memory update model.
+        """
         event_content = event_data.get("content", "")
         event_tensor = self.embedding_model.encode(event_content, convert_to_tensor=True).to(self.device).unsqueeze(0).clone()
         return {
@@ -60,7 +91,13 @@ class MemoryAI:
         }
 
     def log_training_data(self, input_tensors, target_delta_m):
-        """Logs the training data to a file."""
+        """
+        Logs the training data to a file.
+
+        Args:
+            input_tensors (dict): A dictionary of input tensors.
+            target_delta_m (torch.Tensor): The target memory update.
+        """
         if not self.training_log_path:
             return
 
@@ -72,7 +109,16 @@ class MemoryAI:
             f.write(json.dumps(data) + '\n')
 
     def process_interaction(self, interaction_data):
-        """Processes an interaction, detects events, updates memory, and logs for training."""
+        """
+        Processes an interaction, detects events, updates memory, and logs for training.
+
+        Args:
+            interaction_data (dict): The interaction data.
+
+        Returns:
+            dict: A dictionary of input tensors if an event is detected,
+                  otherwise None.
+        """
         event = self.event_detector.detect(interaction_data)
         if not event:
             return None
@@ -101,7 +147,15 @@ class MemoryAI:
         return input_tensors
 
     def train_on_batch(self, batch_data):
-        """Performs a training step on a batch of logged data."""
+        """
+        Performs a training step on a batch of logged data.
+
+        Args:
+            batch_data (list): A list of training data points.
+
+        Returns:
+            float: The average loss for the batch.
+        """
         total_loss = 0.0
         for data in batch_data:
             input_tensors = {k: torch.tensor(v).to(self.device) for k, v in data['inputs'].items()}
