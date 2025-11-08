@@ -43,6 +43,7 @@ class MemoryAI:
             self.load_state(self.state_filepath)
 
         self.training_log_path = training_log_path
+        self.replay_buffer = deque(maxlen=config.REPLAY_BUFFER_SIZE)
 
         self.last_interaction = None
         self.last_explanation_data = None
@@ -79,15 +80,15 @@ class MemoryAI:
 
     def log_training_data(self, input_tensors, target_delta_m):
         """Logs the training data to a file."""
-        if not self.training_log_path:
-            return
-
         data = {
-            "inputs": {k: v.tolist() for k, v in input_tensors.items()},
-            "target": target_delta_m.tolist()
+            "inputs": {k: v.cpu().tolist() for k, v in input_tensors.items()},
+            "target": target_delta_m.cpu().tolist()
         }
-        with open(self.training_log_path, 'a') as f:
-            f.write(json.dumps(data) + '\n')
+        self.replay_buffer.append(data)
+
+        if self.training_log_path:
+            with open(self.training_log_path, 'a') as f:
+                f.write(json.dumps(data) + '\n')
 
         self.replay_buffer.add(data)
 
@@ -122,6 +123,11 @@ class MemoryAI:
 
     def train_on_batch(self, batch_data):
         """Performs a training step on a batch of logged data."""
+        if len(self.replay_buffer) > len(batch_data):
+            replay_sample_size = min(len(self.replay_buffer), len(batch_data) * 2)
+            replay_samples = random.sample(self.replay_buffer, replay_sample_size)
+            batch_data.extend(replay_samples)
+
         total_loss = 0.0
 
         # Add new data to replay buffer
