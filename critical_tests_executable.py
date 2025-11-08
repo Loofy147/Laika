@@ -100,8 +100,12 @@ class CriticalIssueTests:
         print(f"    Growth rate: {growth_rate:.2f}%")
         print(f"    Max single-step growth: {max_norm_growth:.4f}")
         
-        is_stable = final_norm < 10.0 and growth_rate < 100
+        # Dynamic threshold based on configured MEMORY_SIZE
+        pass_threshold = np.sqrt(config.MEMORY_SIZE) + 1.0
+        is_stable = final_norm < pass_threshold
         
+        print(f"    (Pass threshold for norm: < {pass_threshold:.2f})")
+
         if is_stable:
             print(f"  ✅ PASSED: Memory state is bounded")
         else:

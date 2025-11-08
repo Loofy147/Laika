@@ -9,6 +9,7 @@ from .identity_module import Identity
 from .adaptive_event_detector import AdaptiveEventDetector
 from .memory_controller import MemoryController
 from .ground_truth_simulator import GroundTruthSimulator
+from .replay_buffer import ExperienceReplayBuffer
 from . import config
 
 class MemoryAI:
@@ -40,6 +41,7 @@ class MemoryAI:
             self.memory_controller.load_state(self.state_filepath)
 
         self.training_log_path = training_log_path
+        self.replay_buffer = ExperienceReplayBuffer(capacity=config.REPLAY_BUFFER_CAPACITY)
 
         self.last_interaction = None
         self.last_explanation_data = None
@@ -70,6 +72,8 @@ class MemoryAI:
         }
         with open(self.training_log_path, 'a') as f:
             f.write(json.dumps(data) + '\n')
+
+        self.replay_buffer.add(data)
 
     def process_interaction(self, interaction_data):
         """Processes an interaction, detects events, updates memory, and logs for training."""
@@ -103,7 +107,19 @@ class MemoryAI:
     def train_on_batch(self, batch_data):
         """Performs a training step on a batch of logged data."""
         total_loss = 0.0
+
+        # Add new data to replay buffer
         for data in batch_data:
+            self.replay_buffer.add(data)
+
+        # Sample from replay buffer
+        if not self.replay_buffer:
+            return 0.0
+
+        batch_size = min(len(self.replay_buffer), config.BATCH_SIZE)
+        training_sample = self.replay_buffer.sample(batch_size)
+
+        for data in training_sample:
             input_tensors = {k: torch.tensor(v).to(self.device) for k, v in data['inputs'].items()}
             target_output = torch.tensor(data['target']).to(self.device)
 
@@ -117,7 +133,7 @@ class MemoryAI:
 
             total_loss += loss.item()
 
-        avg_loss = total_loss / len(batch_data)
+        avg_loss = total_loss / len(training_sample)
         self.scheduler.step(avg_loss)
         logging.info(f"  Batch training complete. Average loss: {avg_loss:.6f}, LR: {self.optimizer.param_groups[0]['lr']:.6f}")
         return avg_loss

@@ -17,6 +17,9 @@ class TransformerFTheta(nn.Module):
         encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
+        # LayerNorm for stability
+        self.layer_norm = nn.LayerNorm(hidden_size)
+
         # Gated update mechanism
         self.input_gate_linear = nn.Linear(hidden_size, output_size)
         self.candidate_linear = nn.Linear(hidden_size, output_size)
@@ -36,10 +39,13 @@ class TransformerFTheta(nn.Module):
         # Use the mean of the transformer output as the context
         context_vector = torch.mean(transformer_output, dim=1)
 
+        # Apply LayerNorm
+        context_vector = self.layer_norm(context_vector)
+
         # Gated update
         input_gate = torch.sigmoid(self.input_gate_linear(context_vector))
         candidate = torch.tanh(self.candidate_linear(context_vector))
-        return input_gate * candidate
+        return torch.tanh(input_gate * candidate)
 
 class MemoryController:
     """Manages the AI's memory and the neural network for updates."""
@@ -60,6 +66,12 @@ class MemoryController:
     def update(self, delta_m, dt=1.0):
         """Discretized memory update equation."""
         self.state = self.state * (1 - self.lambda_decay * dt) + self.activation_factor * delta_m * dt
+
+        # Clip the memory state to a maximum norm
+        max_norm = torch.sqrt(torch.tensor(self.state.shape[1]))
+        current_norm = torch.norm(self.state)
+        if current_norm > max_norm:
+            self.state = self.state * (max_norm / current_norm)
 
     def get_state(self):
         return self.state
