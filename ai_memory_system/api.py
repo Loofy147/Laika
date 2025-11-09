@@ -9,50 +9,77 @@ import numpy as np
 import os
 import torch
 import json
-from .lock_manager import UserStateLockManager
-from .validation import InteractionRequest
-from pydantic import ValidationError
+import logging
+from pythonjsonlogger import jsonlogger
+import uuid
 from prometheus_flask_exporter import PrometheusMetrics
-from prometheus_client import Counter, Histogram
+
+# Configure structured logging
+log_handler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+log_handler.setFormatter(formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(log_handler)
+logger.setLevel(logging.INFO)
 
 app = Flask(__name__)
-metrics = PrometheusMetrics(app)
-lock_manager = UserStateLockManager(timeout=5.0)
+
+@app.before_request
+def log_request_info():
+    request.request_id = str(uuid.uuid4())
+    logger.info("Request started", extra={'request_id': request.request_id, 'method': request.method, 'url': request.url})
+
+@app.after_request
+def log_response_info(response):
+    logger.info(
+        "Request finished",
+        extra={
+            'request_id': request.request_id,
+            'status_code': response.status_code,
+            'response_length': response.content_length
+        }
+    )
+    return response
+
+from .errors import AppError, ValidationError as AppValidationError
+
+@app.errorhandler(AppError)
+def handle_app_error(error):
+    """Handles custom application errors."""
+    response = {
+        "error": {
+            "message": str(error),
+            "code": error.error_code
+        }
+    }
+    return jsonify(response), error.status_code
+
+@app.route('/health')
+def health_check():
+    """Returns a health check report."""
+    # In a real application, this would check database connections, etc.
+    return jsonify({"status": "ok"})
+
+# Initialize Prometheus Metrics
+# metrics = PrometheusMetrics(app)
+# metrics.info('app_info', 'AI Memory System', version='1.0.0')
+
+from . import config
 
 # Custom metrics
-interaction_counter = Counter(
-    'ai_interactions_total',
-    'Total number of interactions',
-    ['user_id', 'event_detected']
-)
-
-memory_norm_histogram = Histogram(
-    'ai_memory_norm',
-    'Memory state norm distribution'
-)
-
-training_loss_histogram = Histogram(
-    'ai_training_loss',
-    'Training loss distribution'
-)
+# training_time = metrics.summary('training_seconds', 'Time spent training')
+# memory_update_norm = metrics.gauge('memory_update_norm', 'Norm of the memory update')
 
 # Directory to store agent state
-DATA_DIR = "agent_data"
-ARCHIVE_DIR = os.path.join(DATA_DIR, "archive")
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR)
+ARCHIVE_DIR = os.path.join(config.DATA_DIR, "archive")
+if not os.path.exists(config.DATA_DIR):
+    os.makedirs(config.DATA_DIR)
 if not os.path.exists(ARCHIVE_DIR):
     os.makedirs(ARCHIVE_DIR)
 
 # Load valid tokens from environment variable
 VALID_TOKENS = {}
 def load_tokens_from_env():
-    """
-    Loads valid API tokens from the 'VALID_API_TOKENS' environment variable.
-
-    The environment variable should be a comma-separated string of
-    'token:username' pairs.
-    """
     global VALID_TOKENS
     VALID_TOKENS_str = os.environ.get('VALID_API_TOKENS', '')
     VALID_TOKENS = dict(token.split(':') for token in VALID_TOKENS_str.split(',') if ':' in token)
@@ -65,20 +92,6 @@ agent_manager = AgentManager()
 lock_manager = LockManager()
 
 def require_auth(f):
-    """
-    A decorator to protect routes with token-based authentication.
-
-    It checks for a valid 'Bearer' token in the 'Authorization' header,
-    verifies the token, and loads or creates an AI agent instance for the
-    authenticated user. The agent instance is then passed to the decorated
-    function.
-
-    Args:
-        f (function): The function to decorate.
-
-    Returns:
-        function: The decorated function.
-    """
     @wraps(f)
     def decorated(*args, **kwargs):
         auth_header = request.headers.get('Authorization')
@@ -105,28 +118,11 @@ def require_auth(f):
 
 @app.route('/static/<path:path>')
 def send_static(path):
-    """
-    Serves a file from the 'static' directory.
-
-    Args:
-        path (str): The path to the file.
-
-    Returns:
-        A Flask response object.
-    """
     return send_from_directory('static', path)
 
 @app.route('/login', methods=['POST'])
 def login():
-    """
-    Logs in a user and returns an API token.
-
-    This is a simplified example for demonstration. In a real application,
-    you would use a proper authentication provider.
-
-    Returns:
-        A Flask response object.
-    """
+    """Returns a token for a given user."""
     # This is a simplified example for demonstration.
     # In a real application, you would use a proper authentication provider.
     username = request.json.get('username')
@@ -138,15 +134,7 @@ def login():
 @app.route('/memory', methods=['GET'])
 @require_auth
 def get_memory_state(ai_agent):
-    """
-    Returns the current memory state of the AI agent.
-
-    Args:
-        ai_agent (MemoryAI): The AI agent for the authenticated user.
-
-    Returns:
-        A Flask response object containing the memory state.
-    """
+    """Returns the current memory state."""
     memory_state = ai_agent.memory_controller.get_state().tolist()
     return jsonify({"memory_state": memory_state})
 
@@ -157,29 +145,18 @@ def process_interaction(ai_agent):
     try:
         interaction_data = InteractionModel(**request.json)
     except ValidationError as e:
-        return jsonify({"message": str(e)}), 400
+        raise AppValidationError(e.json())
 
     ai_agent.last_interaction = interaction_data.model_dump()
 
-    input_tensors = ai_agent.process_interaction(interaction_data.model_dump())
-
-    if input_tensors is not None:
-        event_detected = True
-        ai_agent.last_explanation_data = input_tensors
-        status = "event processed, data logged for training"
-    else:
-        event_detected = False
-        status = "no event detected"
-
-    interaction_counter.labels(
-        user_id=user_id,
-        event_detected=str(event_detected)
-    ).inc()
-
-    memory_norm = torch.norm(ai_agent.memory_controller.get_state()).item()
-    memory_norm_histogram.observe(memory_norm)
-
-    return jsonify({"status": status})
+    result = ai_agent.process_interaction(interaction_data.model_dump())
+    if result is not None:
+        input_tensors, predicted_delta_m = result
+        if input_tensors is not None:
+            # memory_update_norm.set(torch.norm(predicted_delta_m).item())
+            ai_agent.last_explanation_data = input_tensors
+            return jsonify({"status": "event processed, data logged for training"})
+    return jsonify({"status": "no event detected"})
 
 @app.route('/identity', methods=['POST'])
 @require_auth
@@ -188,7 +165,7 @@ def update_identity(ai_agent):
     try:
         new_properties = IdentityModel(**request.json)
     except ValidationError as e:
-        return jsonify({"message": str(e)}), 400
+        raise AppValidationError(e.json())
 
     ai_agent.identity.update_properties(new_properties.model_dump(exclude_unset=True))
     return jsonify({"status": "identity updated"})
@@ -196,15 +173,7 @@ def update_identity(ai_agent):
 @app.route('/train', methods=['POST'])
 @require_auth
 def train_agent(ai_agent):
-    """
-    Triggers a training cycle on logged data.
-
-    Args:
-        ai_agent (MemoryAI): The AI agent for the authenticated user.
-
-    Returns:
-        A Flask response object.
-    """
+    """Triggers a training cycle on logged data."""
     if not ai_agent.training_log_path or not os.path.exists(ai_agent.training_log_path):
         return jsonify({"message": "No training data to process."}), 404
 
@@ -214,9 +183,8 @@ def train_agent(ai_agent):
     if not batch_data:
         return jsonify({"message": "Training log is empty."}), 200
 
-    with lock_manager.user_lock(ai_agent.identity.user_id):
-        avg_loss = ai_agent.train_on_batch(batch_data)
-        ai_agent.save_state()
+    # with training_time.time():
+    avg_loss = ai_agent.train_on_batch(batch_data)
 
     # Archive the log file
     archive_path = os.path.join(ARCHIVE_DIR, f"{ai_agent.identity.user_id}_{torch.randint(0, 100000, (1,)).item()}.jsonl")
@@ -227,15 +195,7 @@ def train_agent(ai_agent):
 @app.route('/explain', methods=['GET'])
 @require_auth
 def explain_update(ai_agent):
-    """
-    Explains the last memory update using gradient-based feature importance.
-
-    Args:
-        ai_agent (MemoryAI): The AI agent for the authenticated user.
-
-    Returns:
-        A Flask response object containing the explanation.
-    """
+    """Explains the last memory update using gradient-based feature importance."""
     if ai_agent.last_explanation_data is None:
         return jsonify({"explanation": "No memory update has occurred yet for which an explanation can be generated."})
 

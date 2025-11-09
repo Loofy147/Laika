@@ -21,37 +21,19 @@ from ai_memory_system.memory_controller import MemoryController
 from ai_memory_system import config
 
 class CriticalIssueTests:
-    """
-    A test suite for verifying critical issues in the AI Memory System.
-
-    This class contains tests for memory explosion, catastrophic forgetting,
-    privacy leakage, and gradient explosion. The tests are designed to be
-    run from the command line to verify the production readiness of the
-    system.
-    """
+    """Test suite to verify critical issues"""
     
     def __init__(self):
-        """
-        Initializes the CriticalIssueTests suite.
-        """
         self.results = {}
         self.temp_dir = tempfile.mkdtemp()
         
     def cleanup(self):
-        """
-        Cleans up the temporary directory used for storing test artifacts.
-        """
+        """Clean up temporary files"""
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
     
     def test_memory_explosion(self):
-        """
-        Tests for memory state explosion.
-
-        This test runs a series of interactions with high significance and
-        monitors the norm of the memory state. It fails if the norm grows
-        unboundedly.
-        """
+        """Test 1: Memory State Explosion"""
         print("\n" + "="*80)
         print("TEST 1: Memory State Explosion")
         print("="*80)
@@ -125,7 +107,7 @@ class CriticalIssueTests:
         print(f"    (Pass threshold for norm: < {pass_threshold:.2f})")
 
         if is_stable:
-            print(f"  ✅ PASSED: Memory state is bounded (norm: {final_norm:.2f} < threshold: {threshold:.2f})")
+            print(f"  ✅ PASSED: Memory state is bounded")
         else:
             print(f"  ❌ FAILED: Memory state is exploding!")
             print(f"     → Predicted norm at 1000 steps: {final_norm * 2:.2f}")
@@ -140,13 +122,7 @@ class CriticalIssueTests:
         return is_stable
     
     def test_catastrophic_forgetting(self):
-        """
-        Tests for catastrophic forgetting.
-
-        This test simulates a scenario where the AI learns two different
-        tasks sequentially. It then measures how much the AI has forgotten
-        about the first task after learning the second.
-        """
+        """Test 2: Catastrophic Forgetting"""
         print("\n" + "="*80)
         print("TEST 2: Catastrophic Forgetting")
         print("="*80)
@@ -255,14 +231,7 @@ class CriticalIssueTests:
         return is_acceptable
     
     def test_privacy_leakage(self):
-        """
-        Tests for privacy leakage.
-
-        This test creates embeddings for a number of different users and
-        measures the pairwise distances between them. It fails if the
-        minimum distance is below a certain threshold, which could indicate
-        that users are identifiable from their embeddings.
-        """
+        """Test 3: Privacy Leakage"""
         print("\n" + "="*80)
         print("TEST 3: Privacy Leakage Detection")
         print("="*80)
@@ -332,13 +301,7 @@ class CriticalIssueTests:
         return is_private
     
     def test_gradient_explosion(self):
-        """
-        Tests for gradient explosion.
-
-        This test generates training data with extreme values and then
-        monitors the norm of the gradients during training. It fails if the
-        maximum gradient norm is above a certain threshold.
-        """
+        """Test 4: Gradient Explosion"""
         print("\n" + "="*80)
         print("TEST 4: Gradient Explosion Check")
         print("="*80)
@@ -450,12 +413,7 @@ class CriticalIssueTests:
             return True
     
     def run_all_tests(self):
-        """
-        Runs all critical tests and prints a summary of the results.
-
-        Returns:
-            tuple: A tuple containing the number of passed and failed tests.
-        """
+        """Run all critical tests"""
         print("\n" + "🔬" * 40)
         print("CRITICAL ISSUE TEST SUITE")
         print("Testing AI Memory System for Production Readiness")
@@ -508,9 +466,7 @@ class CriticalIssueTests:
 
 
 def main():
-    """
-    Main entry point for the critical tests executable.
-    """
+    """Main entry point"""
     print("Starting Critical Issue Tests...")
     print("This will take 2-3 minutes...\n")
     

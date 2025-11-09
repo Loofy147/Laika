@@ -4,42 +4,24 @@ import json
 import os
 import shutil
 import copy
-from ai_memory_system.api import app, DATA_DIR, ARCHIVE_DIR, load_tokens_from_env
+from ai_memory_system.api import app, ARCHIVE_DIR, load_tokens_from_env
+from ai_memory_system import config
 
 class TestCriticalGaps(unittest.TestCase):
-    """
-    Test suite for the AI Memory System API.
-
-    This class contains tests for authentication, training log archiving,
-    identity updates, model weight changes, memory updates, and input
-    validation.
-    """
 
     @classmethod
     def setUpClass(cls):
-        """
-        Set up a clean environment for the entire test class.
-
-        This method is called once before any tests in the class are run. It
-        sets the 'VALID_API_TOKENS' environment variable and configures the
-        Flask app for testing.
-        """
+        """Set up a clean environment for the entire test class."""
         os.environ['VALID_API_TOKENS'] = 'test-token:user1,another-token:user2'
         load_tokens_from_env()
         app.config['TESTING'] = True
 
     def setUp(self):
-        """
-        Set up a clean environment for each test.
-
-        This method is called before each test is run. It cleans up and
-        recreates the data and archive directories to ensure that each test
-        starts with a clean state.
-        """
+        """Set up a clean environment for each test."""
         # Clean up and recreate directories
-        if os.path.exists(DATA_DIR):
-            shutil.rmtree(DATA_DIR)
-        os.makedirs(DATA_DIR)
+        if os.path.exists(config.DATA_DIR):
+            shutil.rmtree(config.DATA_DIR)
+        os.makedirs(config.DATA_DIR)
         os.makedirs(ARCHIVE_DIR)
 
         self.app = app.test_client()
@@ -50,22 +32,14 @@ class TestCriticalGaps(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        """
-        Clean up the environment after all tests.
-
-        This method is called once after all tests in the class have been run.
-        It cleans up the data directory and unsets the 'VALID_API_TOKENS'
-        environment variable.
-        """
-        if os.path.exists(DATA_DIR):
-            shutil.rmtree(DATA_DIR)
+        """Clean up environment after all tests."""
+        if os.path.exists(config.DATA_DIR):
+            shutil.rmtree(config.DATA_DIR)
         if 'VALID_API_TOKENS' in os.environ:
             del os.environ['VALID_API_TOKENS']
 
     def test_authentication_required(self):
-        """
-        Tests that the API endpoints are protected by authentication.
-        """
+        """Verify that endpoints are protected and require a valid token."""
         response = self.app.get('/memory')
         self.assertEqual(response.status_code, 401)
 
@@ -77,16 +51,14 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_training_log_archiving(self):
-        """
-        Tests that the training log is archived after training.
-        """
+        """Verify that the training log is archived, not deleted."""
         headers = {'Authorization': 'Bearer test-token'}
 
         interaction = {"type": "chat", "content": "Test log archiving.", "significance": 0.9}
         self.app.post('/interact', json=interaction, headers=headers)
 
         user_id = "user1"
-        log_path = os.path.join(DATA_DIR, f"{user_id}_training_log.jsonl")
+        log_path = os.path.join(config.DATA_DIR, f"{user_id}_training_log.jsonl")
         self.assertTrue(os.path.exists(log_path), "Log file was not created.")
 
         train_response = self.app.post('/train', headers=headers)
@@ -99,9 +71,7 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertTrue(archive_files[0].startswith(user_id))
 
     def test_identity_update_affects_ground_truth(self):
-        """
-        Tests that updating the user's identity affects the ground truth.
-        """
+        """Verify that an identity update changes the target delta_m."""
         headers = {'Authorization': 'Bearer test-token'}
 
         interaction1 = {"type": "chat", "content": "A normal message.", "significance": 0.8}
@@ -115,7 +85,7 @@ class TestCriticalGaps(unittest.TestCase):
         }
         self.app.post('/interact', json=interaction2, headers=headers)
 
-        log_path = os.path.join(DATA_DIR, "user1_training_log.jsonl")
+        log_path = os.path.join(config.DATA_DIR, "user1_training_log.jsonl")
         with open(log_path, 'r') as f:
             lines = [json.loads(line) for line in f.readlines()]
 
@@ -210,9 +180,7 @@ class TestCriticalGaps(unittest.TestCase):
         self.assertFalse(torch.equal(initial_identity, new_identity))
 
     def test_interact_input_validation(self):
-        """
-        Tests that the /interact endpoint validates its input.
-        """
+        """Verify that the /interact endpoint validates input."""
         headers = {'Authorization': 'Bearer test-token'}
 
         # Missing 'type'
@@ -258,6 +226,25 @@ class TestCriticalGaps(unittest.TestCase):
         interaction = {"type": "chat", "content": "Test pydantic validation.", "significance": 0.9}
         response = self.app.post('/interact', json=interaction, headers=headers)
         self.assertEqual(response.status_code, 200)
+
+        # Check for structured error response
+        interaction = {"type": "chat", "content": "Test pydantic validation.", "significance": 1.1}
+        response = self.app.post('/interact', json=interaction, headers=headers)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json)
+        self.assertEqual(response.json["error"]["code"], "VALIDATION_ERROR")
+
+    def test_health_check(self):
+        """Verify that the /health endpoint works."""
+        response = self.app.get('/health')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"status": "ok"})
+
+    def test_metrics(self):
+        """Verify that the /metrics endpoint works."""
+        response = self.app.get('/metrics')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("flask_http_requests_latency_seconds", response.text)
 
     def test_replay_buffer_persistence(self):
         """Verify that the replay buffer is saved and loaded correctly."""

@@ -163,17 +163,3 @@ This project can be extended in several ways:
 
 *   **Advanced Neural Architectures:** The `FTheta` network has been replaced with a Transformer-based model to capture more complex relationships between the memory state, identity, and event.
 *   **Multi-Agent Systems:** The system could be extended to support multiple AI agents, each with its own memory and identity. This would allow for the creation of more complex and interactive AI systems.
-
-## Docstrings
-
-All public functions, methods, and classes in this repository are fully documented with docstrings. The docstrings explain the purpose of the code, the arguments, and the return values.
-
-## Critical Tests
-
-To verify the production readiness of the system, run the `critical_tests_executable.py` script:
-
-```bash
-python3 critical_tests_executable.py
-```
-
-This script will run a series of tests to check for memory explosion, catastrophic forgetting, privacy leakage, and gradient explosion.
