@@ -1,7 +1,6 @@
 import os
 from .core import MemoryAI
-
-DATA_DIR = "agent_data"
+from . import config
 
 class AgentManager:
     """Manages the lifecycle of MemoryAI agent instances."""
@@ -18,8 +17,8 @@ class AgentManager:
             return self._agents[user_id]
 
         initial_identity_props = {"age": 30, "interests": ["python", "api_design"]}
-        state_filepath = os.path.join(DATA_DIR, f"{user_id}.pt")
-        training_log_path = os.path.join(DATA_DIR, f"{user_id}_training_log.jsonl")
+        state_filepath = os.path.join(config.DATA_DIR, f"{user_id}.pt")
+        training_log_path = os.path.join(config.DATA_DIR, f"{user_id}_training_log.jsonl")
 
         agent = MemoryAI(
             user_id,

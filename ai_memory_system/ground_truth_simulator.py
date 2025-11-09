@@ -2,44 +2,14 @@ import torch
 from . import config
 
 class GroundTruthSimulator:
-    """
-    Generates a simulated 'ground truth' for memory updates.
-
-    This class creates a target memory update (ΔM) based on the principle that
-    the memory should reflect the change in the user's identity embedding.
-    The significance of the event is used to scale the magnitude of the
-    update.
-    """
+    """Generates a simulated 'ground truth' for memory updates."""
     def __init__(self, embedding_model, device):
-        """
-        Initializes the GroundTruthSimulator.
-
-        Args:
-            embedding_model: The sentence transformer model to use for
-                creating embeddings.
-            device (torch.device): The device to use for tensor operations.
-        """
         self.embedding_model = embedding_model
         self.device = device
 
     def get_target_delta_m(self, event_data, old_identity_embedding, new_identity_embedding):
         """
-        Generates a target memory update (ΔM).
-
-        The target ΔM is calculated as the sum of the change in the identity
-        embedding and the event embedding, scaled by the significance of the
-        event. The result is then projected to the same dimension as the memory
-        space.
-
-        Args:
-            event_data (dict): The event data.
-            old_identity_embedding (torch.Tensor): The user's identity
-                embedding before the event.
-            new_identity_embedding (torch.Tensor): The user's identity
-                embedding after the event.
-
-        Returns:
-            torch.Tensor: The target memory update (ΔM).
+        Generates a target memory update (delta_m) projected to the memory space dimension.
         """
         significance = event_data.get("significance", 0)
 

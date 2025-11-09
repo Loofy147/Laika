@@ -1,97 +1,37 @@
-"""
-Centralized configuration with environment variable support.
-
-Follows 12-factor app methodology.
-"""
-
 import os
 
+# Configuration for the AI Memory System
 
-def get_env_int(key, default):
-    """Get integer from environment."""
-    return int(os.environ.get(key, default))
+# Model Hyperparameters
+MEMORY_SIZE = int(os.environ.get("MEMORY_SIZE", 128))
+IDENTITY_EMBEDDING_SIZE = int(os.environ.get("IDENTITY_EMBEDDING_SIZE", 384))
+EVENT_EMBEDDING_SIZE = int(os.environ.get("EVENT_EMBEDDING_SIZE", 384))
+HIDDEN_SIZE = int(os.environ.get("HIDDEN_SIZE", 512))
+NHEAD = int(os.environ.get("NHEAD", 4))
+NUM_LAYERS = int(os.environ.get("NUM_LAYERS", 2))
 
+# Training Hyperparameters
+LEARNING_RATE = float(os.environ.get("LEARNING_RATE", 0.001))
+PATIENCE = int(os.environ.get("PATIENCE", 5))
+MIN_DELTA = float(os.environ.get("MIN_DELTA", 1e-5))
+MAX_GRAD_NORM = float(os.environ.get("MAX_GRAD_NORM", 1.0))
 
-def get_env_float(key, default):
-    """Get float from environment."""
-    return float(os.environ.get(key, default))
+# Memory Controller Hyperparameters
+LAMBDA_DECAY = float(os.environ.get("LAMBDA_DECAY", 0.01))
+ACTIVATION_FACTOR = float(os.environ.get("ACTIVATION_FACTOR", 1.0))
 
-
-# --- Model Hyperparameters ---
-MEMORY_SIZE = 128
-"""The size of the memory state vector."""
-
-IDENTITY_EMBEDDING_SIZE = 384
-"""The size of the identity embedding."""
-
-EVENT_EMBEDDING_SIZE = 384
-"""The size of the event embedding."""
-
-HIDDEN_SIZE = 512
-"""The hidden size for the Transformer model."""
-
-NHEAD = 4
-"""The number of attention heads in the Transformer model."""
-
-NUM_LAYERS = 2
-"""The number of layers in the Transformer model."""
-
-
-# --- Training Hyperparameters ---
-LEARNING_RATE = 0.001
-"""The initial learning rate for the AdamW optimizer."""
-
-PATIENCE = 5
-"""
-The number of epochs to wait for improvement before reducing the learning
-rate.
-"""
-
-MIN_DELTA = 1e-5
-"""
-The minimum change in the monitored quantity to qualify as an improvement.
-"""
-
-MAX_GRAD_NORM = 1.0
-"""The maximum norm of the gradients for gradient clipping."""
-
-
-# --- Memory Controller Hyperparameters ---
-LAMBDA_DECAY = 0.01
-"""The decay rate for the memory state."""
-
-ACTIVATION_FACTOR = 1.0
-"""The activation factor for the memory update."""
-
-
-# --- Event Detector Hyperparameters ---
-EVENT_THRESHOLD = 0.6
-"""The initial threshold for detecting significant events."""
-
-WINDOW_SIZE = 10
-"""
-The size of the sliding window for calculating the running average of
-significance scores.
-"""
-
-ADJUSTMENT_FACTOR = 0.1
-"""
-The factor by which the event threshold is adjusted based on the running
-average.
-"""
-
-
-# --- Identity Module Hyperparameters ---
-EPSILON = 1.0
-"""
-The epsilon value for the Laplace mechanism in differential privacy. A
-smaller value means more privacy.
-"""
+# Event Detector Hyperparameters
+EVENT_THRESHOLD = float(os.environ.get("EVENT_THRESHOLD", 0.6))
+WINDOW_SIZE = int(os.environ.get("WINDOW_SIZE", 10))
+ADJUSTMENT_FACTOR = float(os.environ.get("ADJUSTMENT_FACTOR", 0.1))
 
 # Replay Buffer
-REPLAY_BUFFER_CAPACITY = 1000
-BATCH_SIZE = 32
+REPLAY_BUFFER_CAPACITY = int(os.environ.get("REPLAY_BUFFER_CAPACITY", 1000))
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 32))
 
 # Identity Module Hyperparameters
-EPSILON = 0.8
-ALPHA = 0.8
+EPSILON = float(os.environ.get("EPSILON", 1.0))
+ALPHA = float(os.environ.get("ALPHA", 0.1))
+
+# File Paths
+DATA_DIR = os.environ.get("DATA_DIR", "agent_data")

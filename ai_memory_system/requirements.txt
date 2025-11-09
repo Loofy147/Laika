@@ -8,3 +8,5 @@ Flask
 diffprivlib
 gunicorn
 pydantic
+python-json-logger
+prometheus-flask-exporter
